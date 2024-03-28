@@ -1,8 +1,7 @@
-use std::{sync::Arc, time::Duration};
-
 use chat::Chat;
 use eframe::egui;
 use ollama_rs::Ollama;
+use std::sync::Arc;
 use tts::Tts;
 
 mod chat;

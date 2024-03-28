@@ -8,7 +8,9 @@ edition = "2021"
 [dependencies]
 catppuccin-egui = { git = "https://github.com/zeozeozeo/catppuccin-egui.git", branch = "egui-0.27" }
 eframe = "0.27.0"
+egui_commonmark = { version = "0.14.0", features = ["better_syntax_highlighting"] }
 env_logger = "0.11.3"
+flowync = { version = "5.1.0", features = ["compact"] }
 log = "0.4.21"
 ollama-rs = { version = "0.1.7", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }

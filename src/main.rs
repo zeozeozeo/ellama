@@ -31,6 +31,7 @@ impl Ellama {
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
         catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MACCHIATO);
+        cc.egui_ctx.style_mut(|s| s.wrap = Some(true));
         Self::default()
     }
 }

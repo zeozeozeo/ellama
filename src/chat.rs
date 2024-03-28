@@ -11,6 +11,7 @@ use tokio_stream::StreamExt;
 struct Message {
     content: String,
     is_user: bool,
+    is_generating: bool,
 }
 
 impl Message {
@@ -19,6 +20,7 @@ impl Message {
         Self {
             content,
             is_user: true,
+            is_generating: false,
         }
     }
 
@@ -27,25 +29,27 @@ impl Message {
         Self {
             content,
             is_user: false,
+            is_generating: true,
         }
     }
 
     fn show(&self, ui: &mut egui::Ui, commonmark_cache: &mut CommonMarkCache, idx: usize) {
-        let mut placer_x = 0.0;
-        ui.horizontal(|ui| {
-            if self.is_user {
-                let f = ui.label("👤").rect.left();
-                placer_x = ui.label("You").rect.left() - f;
-            } else {
-                let f = ui.label("🐱").rect.left();
-                placer_x = ui.label("Llama").rect.left() - f;
-            }
-        });
+        let message_offset = ui
+            .horizontal(|ui| {
+                if self.is_user {
+                    let f = ui.label("👤").rect.left();
+                    ui.label("You").rect.left() - f
+                } else {
+                    let f = ui.label("🐱").rect.left();
+                    ui.label("Llama").rect.left() - f
+                }
+            })
+            .inner;
         if !self.content.is_empty() {
             ui.add_space(-24.0);
         }
         ui.horizontal(|ui| {
-            ui.add_space(placer_x);
+            ui.add_space(message_offset);
             if self.content.is_empty() {
                 ui.add(egui::Spinner::new());
             } else {
@@ -55,7 +59,24 @@ impl Message {
                     .response;
             }
         });
-        ui.add_space(4.0);
+        if !self.is_generating && !self.content.is_empty() && !self.is_user {
+            ui.add_space(-12.0);
+            ui.horizontal(|ui| {
+                ui.add_space(message_offset);
+                if ui
+                    .add(
+                        egui::Button::new("🗐")
+                            .small()
+                            .fill(egui::Color32::TRANSPARENT),
+                    )
+                    .on_hover_text("Copy message")
+                    .clicked()
+                {
+                    ui.ctx().copy_text(self.content.clone());
+                }
+            });
+            ui.add_space(8.0);
+        }
     }
 }
 
@@ -128,7 +149,7 @@ async fn request_completion(
         "completion request complete, response length: {}",
         response.len()
     );
-    handle.success(response);
+    handle.success(response.trim().to_string());
     Ok(())
 }
 
@@ -236,8 +257,11 @@ impl Chat {
                     self.messages.last_mut().unwrap().content += progress.as_str();
                 })
                 .finalize(|result| {
+                    let message = self.messages.last_mut().unwrap();
+
                     // TODO: remove unwrap, open modal instead
-                    self.messages.last_mut().unwrap().content = result.unwrap();
+                    message.content = result.unwrap();
+                    message.is_generating = false;
                 });
         }
 

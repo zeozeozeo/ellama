@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chat::Chat;
 use eframe::egui;
@@ -23,6 +23,7 @@ struct Ellama {
     chat: Chat,
     ollama: Arc<Ollama>,
     tts: Option<Tts>,
+    is_speaking: bool,
 }
 
 impl Default for Ellama {
@@ -33,6 +34,7 @@ impl Default for Ellama {
             tts: Tts::default()
                 .map_err(|e| log::error!("failed to initialize TTS: {e}"))
                 .ok(),
+            is_speaking: false,
         }
     }
 }
@@ -51,6 +53,20 @@ impl Ellama {
 
 impl eframe::App for Ellama {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.chat.show(ctx, self.ollama.clone(), &mut self.tts);
+        let prev_is_speaking = self.is_speaking;
+        self.is_speaking = if let Some(tts) = &self.tts {
+            tts.is_speaking().unwrap_or(false)
+        } else {
+            false
+        };
+        if self.is_speaking {
+            ctx.request_repaint();
+        }
+        self.chat.show(
+            ctx,
+            self.ollama.clone(),
+            &mut self.tts,
+            !self.is_speaking && prev_is_speaking,
+        );
     }
 }

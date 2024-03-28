@@ -18,6 +18,7 @@ struct Message {
     requested_at: Instant,
     clicked_copy: bool,
     is_error: bool,
+    is_speaking: bool,
 }
 
 impl Default for Message {
@@ -29,6 +30,7 @@ impl Default for Message {
             requested_at: Instant::now(),
             clicked_copy: false,
             is_error: false,
+            is_speaking: false,
         }
     }
 }
@@ -130,38 +132,35 @@ impl Message {
                 }
                 self.clicked_copy = self.clicked_copy && copy.hovered();
 
-                // tts button and functionality
-                let is_speaking = if let Some(tts) = tts {
-                    tts.is_speaking().unwrap_or(false)
-                } else {
-                    false
-                };
-
                 let speak = ui
                     .add(
-                        egui::Button::new(if is_speaking { "…" } else { "🔊" })
+                        egui::Button::new(if self.is_speaking { "…" } else { "🔊" })
                             .small()
                             .fill(egui::Color32::TRANSPARENT),
                     )
                     .on_hover_text("Speak message with text-to-speech. Right click to repeat");
 
-                let play_tts = |tts: &mut Tts| {
-                    let _ = tts
-                        .speak(&self.content, true)
-                        .map_err(|e| log::info!("failed to speak message: {e}"));
-                };
+                macro_rules! play_tts {
+                    ($tts:ident) => {
+                        self.is_speaking = true;
+                        let _ = $tts
+                            .speak(&self.content, true)
+                            .map_err(|e| log::info!("failed to speak message: {e}"));
+                    };
+                }
 
                 if let Some(tts) = tts {
                     if speak.clicked() {
-                        if is_speaking {
+                        if self.is_speaking {
+                            self.is_speaking = false;
                             let _ = tts
                                 .stop()
                                 .map_err(|e| log::info!("failed to stop tts: {e}"));
                         } else {
-                            play_tts(tts);
+                            play_tts!(tts);
                         }
                     } else if speak.secondary_clicked() {
-                        play_tts(tts);
+                        play_tts!(tts);
                     }
                 }
             });
@@ -335,7 +334,13 @@ impl Chat {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, ollama: Arc<Ollama>, tts: &mut Option<Tts>) {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        ollama: Arc<Ollama>,
+        tts: &mut Option<Tts>,
+        stopped_speaking: bool,
+    ) {
         let mut modal = Modal::new(ctx, "chat_modal");
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
@@ -385,6 +390,7 @@ impl Chat {
                 });
         }
 
+        let mut new_speaker: Option<usize> = None;
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style()).inner_margin(Margin {
                 left: 16.0,
@@ -399,12 +405,30 @@ impl Chat {
                     .show(ui, |ui| {
                         ui.add_space(16.0); // instead of centralpanel margin
                         for (i, message) in self.messages.iter_mut().enumerate() {
+                            let prev_speaking = message.is_speaking;
                             if message.show(ui, &mut self.commonmark_cache, i, tts) {
                                 self.retry_message_idx = Some(i - 1);
+                            }
+                            if !prev_speaking && message.is_speaking {
+                                new_speaker = Some(i);
                             }
                         }
                     });
             });
+
+        if let Some(new_idx) = new_speaker {
+            for (i, msg) in self.messages.iter_mut().enumerate() {
+                if i == new_idx {
+                    continue;
+                }
+                msg.is_speaking = false;
+            }
+        }
+        if stopped_speaking {
+            for msg in self.messages.iter_mut() {
+                msg.is_speaking = false;
+            }
+        }
 
         modal.show_dialog();
     }

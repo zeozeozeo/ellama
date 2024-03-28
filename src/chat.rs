@@ -1,6 +1,7 @@
 use eframe::egui::{self, Align, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
-use flowync::{CompactFlower, CompactHandle};
+use egui_modal::{Icon, Modal};
+use flowync::{error::Compact, CompactFlower, CompactHandle};
 use ollama_rs::{
     generation::chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
     Ollama,
@@ -8,12 +9,27 @@ use ollama_rs::{
 use std::{sync::Arc, time::Instant};
 use tokio_stream::StreamExt;
 
+#[derive(Clone)]
 struct Message {
     content: String,
     is_user: bool,
     is_generating: bool,
     requested_at: Instant,
     clicked_copy: bool,
+    is_error: bool,
+}
+
+impl Default for Message {
+    fn default() -> Self {
+        Self {
+            content: String::new(),
+            is_user: false,
+            is_generating: false,
+            requested_at: Instant::now(),
+            clicked_copy: false,
+            is_error: false,
+        }
+    }
 }
 
 impl Message {
@@ -23,8 +39,7 @@ impl Message {
             content,
             is_user: true,
             is_generating: false,
-            requested_at: Instant::now(),
-            clicked_copy: false,
+            ..Default::default()
         }
     }
 
@@ -34,12 +49,16 @@ impl Message {
             content,
             is_user: false,
             is_generating: true,
-            requested_at: Instant::now(),
-            clicked_copy: false,
+            ..Default::default()
         }
     }
 
-    fn show(&mut self, ui: &mut egui::Ui, commonmark_cache: &mut CommonMarkCache, idx: usize) {
+    fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        commonmark_cache: &mut CommonMarkCache,
+        idx: usize,
+    ) -> bool {
         // message role
         let message_offset = ui
             .horizontal(|ui| {
@@ -55,14 +74,15 @@ impl Message {
 
         // for some reason commonmark creates empty space above it when created,
         // compensate for that
-        if !self.content.is_empty() {
+        if !self.content.is_empty() && !self.is_error {
             ui.add_space(-24.0);
         }
 
         // message content / spinner
+        let mut retry = false;
         ui.horizontal(|ui| {
             ui.add_space(message_offset);
-            if self.content.is_empty() {
+            if self.content.is_empty() && !self.is_error {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
 
@@ -75,6 +95,14 @@ impl Message {
                         )),
                     )
                 });
+            } else if self.is_error {
+                ui.label("An error occurred while requesting completion");
+                retry = ui
+                    .button("Retry")
+                    .on_hover_text(
+                        "Try to generate a response again. Make sure you have Ollama running",
+                    )
+                    .clicked();
             } else {
                 CommonMarkViewer::new(format!("message_{idx}_commonmark"))
                     .max_image_width(Some(512))
@@ -83,7 +111,7 @@ impl Message {
         });
 
         // copy buttons and such
-        if !self.is_generating && !self.content.is_empty() && !self.is_user {
+        if !self.is_generating && !self.content.is_empty() && !self.is_user && !self.is_error {
             ui.add_space(-12.0);
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
@@ -102,6 +130,8 @@ impl Message {
             });
             ui.add_space(8.0);
         }
+
+        retry
     }
 }
 
@@ -116,6 +146,7 @@ pub struct Chat {
     context_messages: Vec<ChatMessage>,
     flower: CompletionFlower,
     commonmark_cache: CommonMarkCache,
+    retry_message_idx: Option<usize>,
 }
 
 impl Default for Chat {
@@ -127,6 +158,7 @@ impl Default for Chat {
             context_messages: vec![],
             flower: CompletionFlower::new(1),
             commonmark_cache: CommonMarkCache::default(),
+            retry_message_idx: None,
         }
     }
 }
@@ -185,6 +217,9 @@ impl Chat {
             return;
         }
 
+        // remove old error messages
+        self.messages.retain(|m| !m.is_error);
+
         let prompt = self.chatbox.trim_end().to_string();
         self.messages.push(Message::user(prompt.clone()));
 
@@ -218,6 +253,13 @@ impl Chat {
         is_generating: bool,
         ollama: Arc<Ollama>,
     ) {
+        if let Some(idx) = self.retry_message_idx.take() {
+            self.chatbox = self.messages[idx].content.clone();
+            self.messages.remove(idx + 1);
+            self.messages.remove(idx);
+            self.send_message(ollama.clone());
+        }
+
         if is_max_height {
             ui.add_space(8.0);
         }
@@ -257,6 +299,7 @@ impl Chat {
     }
 
     pub fn show(&mut self, ctx: &egui::Context, ollama: Arc<Ollama>) {
+        let mut modal = Modal::new(ctx, "chat_modal");
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
         let chatbox_panel_height = self.chatbox_height + 24.0;
@@ -285,7 +328,22 @@ impl Chat {
                     let message = self.messages.last_mut().unwrap();
 
                     // TODO: remove unwrap, open modal instead
-                    message.content = result.unwrap();
+                    if let Ok(content) = result {
+                        message.content = content;
+                    } else if let Err(e) = result {
+                        let msg = match e {
+                            Compact::Panicked(e) => format!("Panic: {e}"),
+                            Compact::Suppose(e) => e,
+                        };
+                        // message.content = msg.clone();
+                        message.is_error = true;
+                        modal
+                            .dialog()
+                            .with_body(msg)
+                            .with_title("Failed to generate completion!")
+                            .with_icon(Icon::Error)
+                            .open();
+                    }
                     message.is_generating = false;
                 });
         }
@@ -304,9 +362,13 @@ impl Chat {
                     .show(ui, |ui| {
                         ui.add_space(16.0); // instead of centralpanel margin
                         for (i, message) in self.messages.iter_mut().enumerate() {
-                            message.show(ui, &mut self.commonmark_cache, i);
+                            if message.show(ui, &mut self.commonmark_cache, i) {
+                                self.retry_message_idx = Some(i - 1);
+                            }
                         }
                     });
             });
+
+        modal.show_dialog();
     }
 }

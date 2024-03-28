@@ -1,10 +1,11 @@
-use chat::Chat;
 use eframe::egui;
 use ollama_rs::Ollama;
+use sessions::Sessions;
 use std::sync::Arc;
 use tts::Tts;
 
 mod chat;
+mod sessions;
 
 #[tokio::main]
 async fn main() {
@@ -19,7 +20,7 @@ async fn main() {
 }
 
 struct Ellama {
-    chat: Chat,
+    sessions: Sessions,
     ollama: Arc<Ollama>,
     tts: Option<Tts>,
     is_speaking: bool,
@@ -28,7 +29,7 @@ struct Ellama {
 impl Default for Ellama {
     fn default() -> Self {
         Self {
-            chat: Chat::default(),
+            sessions: Sessions::default(),
             ollama: Arc::new(Ollama::default()),
             tts: Tts::default()
                 .map_err(|e| log::error!("failed to initialize TTS: {e}"))
@@ -61,7 +62,8 @@ impl eframe::App for Ellama {
         if self.is_speaking {
             ctx.request_repaint();
         }
-        self.chat.show(
+
+        self.sessions.show(
             ctx,
             self.ollama.clone(),
             &mut self.tts,

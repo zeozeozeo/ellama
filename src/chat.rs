@@ -138,7 +138,7 @@ impl Message {
                             .small()
                             .fill(egui::Color32::TRANSPARENT),
                     )
-                    .on_hover_text("Speak message with text-to-speech. Right click to repeat");
+                    .on_hover_text("Read the message out loud. Right click to repeat");
 
                 macro_rules! play_tts {
                     ($tts:ident) => {
@@ -183,6 +183,7 @@ pub struct Chat {
     flower: CompletionFlower,
     commonmark_cache: CommonMarkCache,
     retry_message_idx: Option<usize>,
+    pub summary: String,
 }
 
 impl Default for Chat {
@@ -195,6 +196,7 @@ impl Default for Chat {
             flower: CompletionFlower::new(1),
             commonmark_cache: CommonMarkCache::default(),
             retry_message_idx: None,
+            summary: String::new(),
         }
     }
 }
@@ -234,7 +236,6 @@ async fn request_completion(
             // send message to gui thread
             handle.send(content.to_string());
             response += content;
-            // log::debug!("{response}");
         }
     }
 
@@ -258,6 +259,15 @@ impl Chat {
 
         let prompt = self.chatbox.trim_end().to_string();
         self.messages.push(Message::user(prompt.clone()));
+
+        for word in prompt.split_whitespace() {
+            self.summary += word;
+            if self.summary.len() >= 24 {
+                self.summary += "…";
+                break;
+            }
+            self.summary += " ";
+        }
 
         // clear chatbox
         self.chatbox.clear();
@@ -417,6 +427,7 @@ impl Chat {
             });
 
         if let Some(new_idx) = new_speaker {
+            log::debug!("new speaker {new_idx} appeared, updating message icons");
             for (i, msg) in self.messages.iter_mut().enumerate() {
                 if i == new_idx {
                     continue;
@@ -425,6 +436,7 @@ impl Chat {
             }
         }
         if stopped_speaking {
+            log::debug!("TTS stopped speaking, updating message icons");
             for msg in self.messages.iter_mut() {
                 msg.is_speaking = false;
             }

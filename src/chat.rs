@@ -30,40 +30,32 @@ impl Message {
         }
     }
 
-    fn show(
-        &self,
-        ui: &mut egui::Ui,
-        commonmark_cache: &mut CommonMarkCache,
-        scroll_to: bool,
-        idx: usize,
-    ) {
-        egui::Grid::new(format!("message_{idx}"))
-            .min_col_width(0.0)
-            .min_row_height(0.0)
-            .num_columns(2)
-            .show(ui, |ui| {
-                if self.is_user {
-                    ui.label("👤");
-                    ui.label("You");
-                } else {
-                    ui.label("🤖");
-                    ui.label("Llama");
-                }
-                ui.end_row();
-                ui.add_sized([0.0, 0.0], egui::Label::new("")); // skip first column
-                if self.content.is_empty() {
-                    ui.add(egui::Spinner::new());
-                } else {
-                    let resp = CommonMarkViewer::new(format!("message_{idx}_commonmark"))
-                        .max_image_width(Some(512))
-                        .show(ui, commonmark_cache, self.content.trim())
-                        .response;
-                    if scroll_to {
-                        resp.scroll_to_me(Some(Align::Max));
-                    }
-                }
-            });
-        ui.add_space(8.0);
+    fn show(&self, ui: &mut egui::Ui, commonmark_cache: &mut CommonMarkCache, idx: usize) {
+        let mut placer_x = 0.0;
+        ui.horizontal(|ui| {
+            if self.is_user {
+                let f = ui.label("👤").rect.left();
+                placer_x = ui.label("You").rect.left() - f;
+            } else {
+                let f = ui.label("🐱").rect.left();
+                placer_x = ui.label("Llama").rect.left() - f;
+            }
+        });
+        if !self.content.is_empty() {
+            ui.add_space(-24.0);
+        }
+        ui.horizontal(|ui| {
+            ui.add_space(placer_x);
+            if self.content.is_empty() {
+                ui.add(egui::Spinner::new());
+            } else {
+                CommonMarkViewer::new(format!("message_{idx}_commonmark"))
+                    .max_image_width(Some(512))
+                    .show(ui, commonmark_cache, &self.content)
+                    .response;
+            }
+        });
+        ui.add_space(4.0);
     }
 }
 
@@ -74,7 +66,6 @@ type CompletionFlowerHandle = CompactHandle<String, String, String>;
 pub struct Chat {
     chatbox: String,
     chatbox_height: f32,
-    is_at_bottom: bool,
     messages: Vec<Message>,
     context_messages: Vec<ChatMessage>,
     flower: CompletionFlower,
@@ -86,7 +77,6 @@ impl Default for Chat {
         Self {
             chatbox: String::new(),
             chatbox_height: 0.0,
-            is_at_bottom: false,
             messages: vec![],
             context_messages: vec![],
             flower: CompletionFlower::new(1),
@@ -175,25 +165,41 @@ impl Chat {
         });
     }
 
-    fn show_chatbox(&mut self, ui: &mut egui::Ui, is_max_height: bool, ollama: Arc<Ollama>) {
+    fn show_chatbox(
+        &mut self,
+        ui: &mut egui::Ui,
+        is_max_height: bool,
+        is_generating: bool,
+        ollama: Arc<Ollama>,
+    ) {
         if is_max_height {
             ui.add_space(8.0);
         }
         ui.horizontal_centered(|ui| {
-            if !is_max_height && ui.button("Send").clicked() {
-                self.send_message(ollama.clone());
-            }
+            ui.add_enabled_ui(!is_generating, |ui| {
+                if !is_max_height
+                    && ui
+                        .button("Send")
+                        .on_disabled_hover_text("Please wait…")
+                        .clicked()
+                    && !is_generating
+                {
+                    self.send_message(ollama.clone());
+                }
+            });
             ui.with_layout(
                 Layout::left_to_right(Align::Center).with_main_justify(true),
                 |ui| {
                     self.chatbox_height = egui::TextEdit::multiline(&mut self.chatbox)
                         .return_key(KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter))
-                        .hint_text("Ask me anything...")
+                        .hint_text("Ask me anything…")
                         .show(ui)
                         .response
                         .rect
                         .height();
-                    if ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none()) {
+                    if !is_generating
+                        && ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none())
+                    {
                         self.send_message(ollama.clone());
                     }
                 },
@@ -214,9 +220,12 @@ impl Chat {
             .exact_height(chatbox_panel_height.min(max_height))
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.add_enabled_ui(!is_generating, |ui| {
-                        self.show_chatbox(ui, chatbox_panel_height >= max_height, ollama.clone());
-                    });
+                    self.show_chatbox(
+                        ui,
+                        chatbox_panel_height >= max_height,
+                        is_generating,
+                        ollama.clone(),
+                    );
                 });
             });
 
@@ -240,26 +249,15 @@ impl Chat {
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
-                let scrollarea = egui::ScrollArea::vertical()
+                egui::ScrollArea::vertical()
                     .auto_shrink(false)
-                    .max_height(max_height)
+                    .stick_to_bottom(true)
                     .show(ui, |ui| {
                         ui.add_space(16.0); // instead of centralpanel margin
                         for (i, message) in self.messages.iter().enumerate() {
-                            message.show(
-                                ui,
-                                &mut self.commonmark_cache,
-                                self.is_at_bottom && i == self.messages.len() - 1,
-                                i,
-                            );
+                            message.show(ui, &mut self.commonmark_cache, i);
                         }
                     });
-                log::info!(
-                    "contentsize: {}, avail: {}",
-                    scrollarea.state.offset
-                );
-                self.is_at_bottom =
-                    scrollarea.content_size.y > avail.height() - chatbox_panel_height - 48.0;
             });
     }
 }

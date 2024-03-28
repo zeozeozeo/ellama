@@ -1140,6 +1140,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-modal"
+version = "0.3.6"
+source = "git+https://github.com/zeozeozeo/egui-modal.git#483985371e90c9bebfe53046eb6e64445de18de9"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "egui-wgpu"
 version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1240,6 +1248,7 @@ version = "0.1.0"
 dependencies = [
  "catppuccin-egui",
  "eframe",
+ "egui-modal",
  "egui_commonmark",
  "env_logger",
  "flowync",

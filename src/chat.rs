@@ -5,35 +5,42 @@ use ollama_rs::{
     generation::chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
     Ollama,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use tokio_stream::StreamExt;
 
 struct Message {
     content: String,
     is_user: bool,
     is_generating: bool,
+    requested_at: Instant,
+    clicked_copy: bool,
 }
 
 impl Message {
     #[inline]
-    const fn user(content: String) -> Self {
+    fn user(content: String) -> Self {
         Self {
             content,
             is_user: true,
             is_generating: false,
+            requested_at: Instant::now(),
+            clicked_copy: false,
         }
     }
 
     #[inline]
-    const fn assistant(content: String) -> Self {
+    fn assistant(content: String) -> Self {
         Self {
             content,
             is_user: false,
             is_generating: true,
+            requested_at: Instant::now(),
+            clicked_copy: false,
         }
     }
 
-    fn show(&self, ui: &mut egui::Ui, commonmark_cache: &mut CommonMarkCache, idx: usize) {
+    fn show(&mut self, ui: &mut egui::Ui, commonmark_cache: &mut CommonMarkCache, idx: usize) {
+        // message role
         let message_offset = ui
             .horizontal(|ui| {
                 if self.is_user {
@@ -45,35 +52,53 @@ impl Message {
                 }
             })
             .inner;
+
+        // for some reason commonmark creates empty space above it when created,
+        // compensate for that
         if !self.content.is_empty() {
             ui.add_space(-24.0);
         }
+
+        // message content / spinner
         ui.horizontal(|ui| {
             ui.add_space(message_offset);
             if self.content.is_empty() {
-                ui.add(egui::Spinner::new());
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+
+                    // show time spent waiting for response
+                    ui.add_enabled(
+                        false,
+                        egui::Label::new(format!(
+                            "{:.1}s",
+                            self.requested_at.elapsed().as_secs_f64()
+                        )),
+                    )
+                });
             } else {
                 CommonMarkViewer::new(format!("message_{idx}_commonmark"))
                     .max_image_width(Some(512))
-                    .show(ui, commonmark_cache, &self.content)
-                    .response;
+                    .show(ui, commonmark_cache, &self.content);
             }
         });
+
+        // copy buttons and such
         if !self.is_generating && !self.content.is_empty() && !self.is_user {
             ui.add_space(-12.0);
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
-                if ui
+                let copy = ui
                     .add(
-                        egui::Button::new("🗐")
+                        egui::Button::new(if self.clicked_copy { "✔" } else { "🗐" })
                             .small()
                             .fill(egui::Color32::TRANSPARENT),
                     )
-                    .on_hover_text("Copy message")
-                    .clicked()
-                {
+                    .on_hover_text("Copy message");
+                if copy.clicked() {
                     ui.ctx().copy_text(self.content.clone());
+                    self.clicked_copy = true;
                 }
+                self.clicked_copy = self.clicked_copy && copy.hovered();
             });
             ui.add_space(8.0);
         }
@@ -278,7 +303,7 @@ impl Chat {
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         ui.add_space(16.0); // instead of centralpanel margin
-                        for (i, message) in self.messages.iter().enumerate() {
+                        for (i, message) in self.messages.iter_mut().enumerate() {
                             message.show(ui, &mut self.commonmark_cache, i);
                         }
                     });

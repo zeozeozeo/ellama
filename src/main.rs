@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chat::Chat;
 use eframe::egui;
 use ollama_rs::Ollama;
+use tts::Tts;
 
 mod chat;
 
@@ -18,10 +19,22 @@ async fn main() {
     .expect("failed to run app");
 }
 
-#[derive(Default)]
 struct Ellama {
     chat: Chat,
     ollama: Arc<Ollama>,
+    tts: Option<Tts>,
+}
+
+impl Default for Ellama {
+    fn default() -> Self {
+        Self {
+            chat: Chat::default(),
+            ollama: Arc::new(Ollama::default()),
+            tts: Tts::default()
+                .map_err(|e| log::error!("failed to initialize TTS: {e}"))
+                .ok(),
+        }
+    }
 }
 
 impl Ellama {
@@ -38,6 +51,6 @@ impl Ellama {
 
 impl eframe::App for Ellama {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.chat.show(ctx, self.ollama.clone());
+        self.chat.show(ctx, self.ollama.clone(), &mut self.tts);
     }
 }

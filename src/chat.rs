@@ -8,6 +8,7 @@ use ollama_rs::{
 };
 use std::{sync::Arc, time::Instant};
 use tokio_stream::StreamExt;
+use tts::*;
 
 #[derive(Clone)]
 struct Message {
@@ -58,6 +59,7 @@ impl Message {
         ui: &mut egui::Ui,
         commonmark_cache: &mut CommonMarkCache,
         idx: usize,
+        tts: &mut Option<Tts>,
     ) -> bool {
         // message role
         let message_offset = ui
@@ -127,6 +129,41 @@ impl Message {
                     self.clicked_copy = true;
                 }
                 self.clicked_copy = self.clicked_copy && copy.hovered();
+
+                // tts button and functionality
+                let is_speaking = if let Some(tts) = tts {
+                    tts.is_speaking().unwrap_or(false)
+                } else {
+                    false
+                };
+
+                let speak = ui
+                    .add(
+                        egui::Button::new(if is_speaking { "…" } else { "🔊" })
+                            .small()
+                            .fill(egui::Color32::TRANSPARENT),
+                    )
+                    .on_hover_text("Speak message with text-to-speech. Right click to repeat");
+
+                let play_tts = |tts: &mut Tts| {
+                    let _ = tts
+                        .speak(&self.content, true)
+                        .map_err(|e| log::info!("failed to speak message: {e}"));
+                };
+
+                if let Some(tts) = tts {
+                    if speak.clicked() {
+                        if is_speaking {
+                            let _ = tts
+                                .stop()
+                                .map_err(|e| log::info!("failed to stop tts: {e}"));
+                        } else {
+                            play_tts(tts);
+                        }
+                    } else if speak.secondary_clicked() {
+                        play_tts(tts);
+                    }
+                }
             });
             ui.add_space(8.0);
         }
@@ -298,7 +335,7 @@ impl Chat {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, ollama: Arc<Ollama>) {
+    pub fn show(&mut self, ctx: &egui::Context, ollama: Arc<Ollama>, tts: &mut Option<Tts>) {
         let mut modal = Modal::new(ctx, "chat_modal");
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
@@ -362,7 +399,7 @@ impl Chat {
                     .show(ui, |ui| {
                         ui.add_space(16.0); // instead of centralpanel margin
                         for (i, message) in self.messages.iter_mut().enumerate() {
-                            if message.show(ui, &mut self.commonmark_cache, i) {
+                            if message.show(ui, &mut self.commonmark_cache, i, tts) {
                                 self.retry_message_idx = Some(i - 1);
                             }
                         }

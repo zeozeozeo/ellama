@@ -19,3 +19,4 @@ ollama-rs = { version = "0.1.7", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1.14"
 egui-modal = { git = "https://github.com/zeozeozeo/egui-modal.git" }
+tts = "0.26.0"

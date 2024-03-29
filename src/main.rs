@@ -40,6 +40,8 @@ impl Ellama {
         // for e.g. egui::PaintCallback.
         catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MACCHIATO);
         //cc.egui_ctx.style_mut(|s| s.wrap = Some(true));
+        cc.egui_ctx
+            .style_mut(|s| s.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand));
         Self::default()
     }
 }

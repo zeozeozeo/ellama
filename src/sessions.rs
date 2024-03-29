@@ -1,5 +1,6 @@
 use crate::chat::Chat;
 use eframe::egui;
+use egui_modal::Modal;
 use ollama_rs::Ollama;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -52,6 +53,8 @@ impl Sessions {
             ctx.request_repaint();
         }
 
+        let mut modal = Modal::new(ctx, "sessions_main_modal");
+
         let avail_width = ctx.available_rect().width();
         egui::SidePanel::left("sessions_panel")
             .resizable(true)
@@ -60,6 +63,18 @@ impl Sessions {
                 self.show_left_panel(ui);
                 ui.allocate_space(ui.available_size());
             });
+
+        // poll all flowers
+        let mut requested_repaint = false;
+        for chat in self.chats.iter_mut() {
+            if chat.flower_active() {
+                if !requested_repaint {
+                    ctx.request_repaint();
+                    requested_repaint = true;
+                }
+                chat.poll_flower(&mut modal);
+            }
+        }
 
         let tts = self.tts.clone();
         let is_speaking = self.is_speaking;
@@ -71,6 +86,8 @@ impl Sessions {
                 prev_is_speaking && !is_speaking, // stopped_talking
             );
         }
+
+        modal.show_dialog();
     }
 
     fn show_left_panel(&mut self, ui: &mut egui::Ui) {

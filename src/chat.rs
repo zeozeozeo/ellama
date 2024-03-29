@@ -219,7 +219,7 @@ async fn request_completion(
     );
     let mut stream: ChatMessageResponseStream = ollama
         .send_chat_messages_stream(ChatMessageRequest::new(
-            "starling-lm:7b-alpha-q5_K_S".to_string(),
+            "tinydolphin:latest".to_string(),
             messages,
         ))
         .await?;
@@ -353,6 +353,39 @@ impl Chat {
         }
     }
 
+    #[inline]
+    pub fn flower_active(&self) -> bool {
+        self.flower.is_active()
+    }
+
+    pub fn poll_flower(&mut self, modal: &mut Modal) {
+        self.flower
+            .extract(|progress| {
+                self.messages.last_mut().unwrap().content += progress.as_str();
+            })
+            .finalize(|result| {
+                let message = self.messages.last_mut().unwrap();
+
+                if let Ok(content) = result {
+                    message.content = content;
+                } else if let Err(e) = result {
+                    let msg = match e {
+                        Compact::Panicked(e) => format!("Tokio task panicked: {e}"),
+                        Compact::Suppose(e) => e,
+                    };
+                    // message.content = msg.clone();
+                    message.is_error = true;
+                    modal
+                        .dialog()
+                        .with_body(msg)
+                        .with_title("Failed to generate completion!")
+                        .with_icon(Icon::Error)
+                        .open();
+                }
+                message.is_generating = false;
+            });
+    }
+
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -364,7 +397,6 @@ impl Chat {
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
         let chatbox_panel_height = self.chatbox_height + 24.0;
-        let is_generating = self.flower.is_active();
 
         egui::TopBottomPanel::bottom("chatbox_panel")
             .exact_height(chatbox_panel_height.min(max_height))
@@ -373,41 +405,11 @@ impl Chat {
                     self.show_chatbox(
                         ui,
                         chatbox_panel_height >= max_height,
-                        is_generating,
+                        self.flower_active(),
                         ollama.clone(),
                     );
                 });
             });
-
-        if is_generating {
-            ctx.request_repaint();
-            self.flower
-                .extract(|progress| {
-                    self.messages.last_mut().unwrap().content += progress.as_str();
-                })
-                .finalize(|result| {
-                    let message = self.messages.last_mut().unwrap();
-
-                    // TODO: remove unwrap, open modal instead
-                    if let Ok(content) = result {
-                        message.content = content;
-                    } else if let Err(e) = result {
-                        let msg = match e {
-                            Compact::Panicked(e) => format!("Panic: {e}"),
-                            Compact::Suppose(e) => e,
-                        };
-                        // message.content = msg.clone();
-                        message.is_error = true;
-                        modal
-                            .dialog()
-                            .with_body(msg)
-                            .with_title("Failed to generate completion!")
-                            .with_icon(Icon::Error)
-                            .open();
-                    }
-                    message.is_generating = false;
-                });
-        }
 
         let mut new_speaker: Option<usize> = None;
         egui::CentralPanel::default()
@@ -418,7 +420,7 @@ impl Chat {
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
+                egui::ScrollArea::both()
                     .auto_shrink(false)
                     .stick_to_bottom(true)
                     .show(ui, |ui| {

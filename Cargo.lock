@@ -1330,6 +1330,7 @@ dependencies = [
  "flowync",
  "log",
  "ollama-rs",
+ "parking_lot",
  "tokio",
  "tokio-stream",
  "tts",

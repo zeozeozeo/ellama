@@ -1,6 +1,7 @@
 use crate::chat::Chat;
 use eframe::egui;
 use ollama_rs::Ollama;
+use parking_lot::RwLock;
 use std::sync::Arc;
 use tts::Tts;
 
@@ -11,21 +12,46 @@ enum SessionTab {
     Model,
 }
 
-#[derive(Default)]
+pub type SharedTts = Option<Arc<RwLock<Tts>>>;
+
 pub struct Sessions {
     tab: SessionTab,
     chats: Vec<Chat>,
     selected_chat: Option<usize>,
+    is_speaking: bool,
+    tts: SharedTts,
+}
+
+impl Default for Sessions {
+    fn default() -> Self {
+        Self {
+            tab: SessionTab::Chats,
+            chats: vec![Chat::default()],
+            selected_chat: Some(0),
+            is_speaking: false,
+            tts: Tts::default()
+                .map_err(|e| log::error!("failed to initialize TTS: {e}"))
+                .map(|tts| Arc::new(RwLock::new(tts)))
+                .ok(),
+        }
+    }
 }
 
 impl Sessions {
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        ollama: Arc<Ollama>,
-        tts: &mut Option<Tts>,
-        stopped_talking: bool,
-    ) {
+    pub fn show(&mut self, ctx: &egui::Context, ollama: Arc<Ollama>) {
+        // check if tts stopped speaking
+        let prev_is_speaking = self.is_speaking;
+        self.is_speaking = if let Some(tts) = &self.tts {
+            tts.read().is_speaking().unwrap_or(false)
+        } else {
+            false
+        };
+
+        // if speaking, continuously check if stopped
+        if self.is_speaking {
+            ctx.request_repaint();
+        }
+
         let avail_width = ctx.available_rect().width();
         egui::SidePanel::left("sessions_panel")
             .resizable(true)
@@ -35,8 +61,15 @@ impl Sessions {
                 ui.allocate_space(ui.available_size());
             });
 
+        let tts = self.tts.clone();
+        let is_speaking = self.is_speaking;
         if let Some(chat) = self.get_selected_chat() {
-            chat.show(ctx, ollama.clone(), tts, stopped_talking);
+            chat.show(
+                ctx,
+                ollama.clone(),
+                tts,
+                prev_is_speaking && !is_speaking, // stopped_talking
+            );
         }
     }
 

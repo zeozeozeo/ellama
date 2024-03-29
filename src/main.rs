@@ -2,7 +2,6 @@ use eframe::egui;
 use ollama_rs::Ollama;
 use sessions::Sessions;
 use std::sync::Arc;
-use tts::Tts;
 
 mod chat;
 mod sessions;
@@ -22,8 +21,6 @@ async fn main() {
 struct Ellama {
     sessions: Sessions,
     ollama: Arc<Ollama>,
-    tts: Option<Tts>,
-    is_speaking: bool,
 }
 
 impl Default for Ellama {
@@ -31,10 +28,6 @@ impl Default for Ellama {
         Self {
             sessions: Sessions::default(),
             ollama: Arc::new(Ollama::default()),
-            tts: Tts::default()
-                .map_err(|e| log::error!("failed to initialize TTS: {e}"))
-                .ok(),
-            is_speaking: false,
         }
     }
 }
@@ -53,21 +46,6 @@ impl Ellama {
 
 impl eframe::App for Ellama {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let prev_is_speaking = self.is_speaking;
-        self.is_speaking = if let Some(tts) = &self.tts {
-            tts.is_speaking().unwrap_or(false)
-        } else {
-            false
-        };
-        if self.is_speaking {
-            ctx.request_repaint();
-        }
-
-        self.sessions.show(
-            ctx,
-            self.ollama.clone(),
-            &mut self.tts,
-            !self.is_speaking && prev_is_speaking,
-        );
+        self.sessions.show(ctx, self.ollama.clone());
     }
 }

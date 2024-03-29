@@ -1,3 +1,4 @@
+use crate::sessions::SharedTts;
 use eframe::egui::{self, Align, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -8,7 +9,6 @@ use ollama_rs::{
 };
 use std::{sync::Arc, time::Instant};
 use tokio_stream::StreamExt;
-use tts::*;
 
 #[derive(Clone)]
 struct Message {
@@ -33,6 +33,24 @@ impl Default for Message {
             is_speaking: false,
         }
     }
+}
+
+fn tts_control(tts: SharedTts, text: String, speak: bool) {
+    std::thread::spawn(move || {
+        if let Some(tts) = tts {
+            if speak {
+                let _ = tts
+                    .write()
+                    .speak(text, true)
+                    .map_err(|e| log::error!("failed to speak: {e}"));
+            } else {
+                let _ = tts
+                    .write()
+                    .stop()
+                    .map_err(|e| log::error!("failed to stop tts: {e}"));
+            }
+        }
+    });
 }
 
 impl Message {
@@ -60,8 +78,8 @@ impl Message {
         &mut self,
         ui: &mut egui::Ui,
         commonmark_cache: &mut CommonMarkCache,
+        tts: SharedTts,
         idx: usize,
-        tts: &mut Option<Tts>,
     ) -> bool {
         // message role
         let message_offset = ui
@@ -140,28 +158,17 @@ impl Message {
                     )
                     .on_hover_text("Read the message out loud. Right click to repeat");
 
-                macro_rules! play_tts {
-                    ($tts:ident) => {
+                if speak.clicked() {
+                    if self.is_speaking {
+                        self.is_speaking = false;
+                        tts_control(tts, String::new(), false);
+                    } else {
                         self.is_speaking = true;
-                        let _ = $tts
-                            .speak(&self.content, true)
-                            .map_err(|e| log::info!("failed to speak message: {e}"));
-                    };
-                }
-
-                if let Some(tts) = tts {
-                    if speak.clicked() {
-                        if self.is_speaking {
-                            self.is_speaking = false;
-                            let _ = tts
-                                .stop()
-                                .map_err(|e| log::info!("failed to stop tts: {e}"));
-                        } else {
-                            play_tts!(tts);
-                        }
-                    } else if speak.secondary_clicked() {
-                        play_tts!(tts);
+                        tts_control(tts, self.content.clone(), true);
                     }
+                } else if speak.secondary_clicked() {
+                    self.is_speaking = true;
+                    tts_control(tts, self.content.clone(), true);
                 }
             });
             ui.add_space(8.0);
@@ -260,13 +267,15 @@ impl Chat {
         let prompt = self.chatbox.trim_end().to_string();
         self.messages.push(Message::user(prompt.clone()));
 
-        for word in prompt.split_whitespace() {
-            self.summary += word;
-            if self.summary.len() >= 24 {
-                self.summary += "…";
-                break;
+        if self.summary.len() < 24 {
+            for word in prompt.split_whitespace() {
+                self.summary += word;
+                if self.summary.len() >= 24 {
+                    self.summary += "…";
+                    break;
+                }
+                self.summary += " ";
             }
-            self.summary += " ";
         }
 
         // clear chatbox
@@ -348,7 +357,7 @@ impl Chat {
         &mut self,
         ctx: &egui::Context,
         ollama: Arc<Ollama>,
-        tts: &mut Option<Tts>,
+        tts: SharedTts,
         stopped_speaking: bool,
     ) {
         let mut modal = Modal::new(ctx, "chat_modal");
@@ -416,7 +425,7 @@ impl Chat {
                         ui.add_space(16.0); // instead of centralpanel margin
                         for (i, message) in self.messages.iter_mut().enumerate() {
                             let prev_speaking = message.is_speaking;
-                            if message.show(ui, &mut self.commonmark_cache, i, tts) {
+                            if message.show(ui, &mut self.commonmark_cache, tts.clone(), i) {
                                 self.retry_message_idx = Some(i - 1);
                             }
                             if !prev_speaking && message.is_speaking {

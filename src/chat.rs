@@ -7,7 +7,7 @@ use ollama_rs::{
     generation::chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
     Ollama,
 };
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 use tokio_stream::StreamExt;
 
 #[derive(Clone)]
@@ -209,7 +209,7 @@ impl Default for Chat {
 }
 
 async fn request_completion(
-    ollama: Arc<Ollama>,
+    ollama: Ollama,
     messages: Vec<ChatMessage>,
     handle: &CompletionFlowerHandle,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -219,7 +219,7 @@ async fn request_completion(
     );
     let mut stream: ChatMessageResponseStream = ollama
         .send_chat_messages_stream(ChatMessageRequest::new(
-            "tinydolphin:latest".to_string(),
+            "starling-lm:7b-alpha-q5_K_S".to_string(),
             messages,
         ))
         .await?;
@@ -255,7 +255,7 @@ async fn request_completion(
 }
 
 impl Chat {
-    fn send_message(&mut self, ollama: Arc<Ollama>) {
+    fn send_message(&mut self, ollama: &Ollama) {
         // don't send empty messages
         if self.chatbox.is_empty() {
             return;
@@ -290,6 +290,7 @@ impl Chat {
 
         // spawn a new thread to generate the completion
         let handle = self.flower.handle(); // recv'd by gui thread
+        let ollama = ollama.clone();
         tokio::spawn(async move {
             handle.activate();
             let _ = request_completion(ollama, context_messages, &handle)
@@ -306,13 +307,13 @@ impl Chat {
         ui: &mut egui::Ui,
         is_max_height: bool,
         is_generating: bool,
-        ollama: Arc<Ollama>,
+        ollama: &Ollama,
     ) {
         if let Some(idx) = self.retry_message_idx.take() {
             self.chatbox = self.messages[idx].content.clone();
             self.messages.remove(idx + 1);
             self.messages.remove(idx);
-            self.send_message(ollama.clone());
+            self.send_message(ollama);
         }
 
         if is_max_height {
@@ -327,7 +328,7 @@ impl Chat {
                         .clicked()
                     && !is_generating
                 {
-                    self.send_message(ollama.clone());
+                    self.send_message(ollama);
                 }
             });
             ui.with_layout(
@@ -343,7 +344,7 @@ impl Chat {
                     if !is_generating
                         && ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none())
                     {
-                        self.send_message(ollama.clone());
+                        self.send_message(ollama);
                     }
                 },
             );
@@ -389,7 +390,7 @@ impl Chat {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        ollama: Arc<Ollama>,
+        ollama: &Ollama,
         tts: SharedTts,
         stopped_speaking: bool,
     ) {
@@ -406,7 +407,7 @@ impl Chat {
                         ui,
                         chatbox_panel_height >= max_height,
                         self.flower_active(),
-                        ollama.clone(),
+                        ollama,
                     );
                 });
             });

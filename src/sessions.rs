@@ -39,7 +39,7 @@ impl Default for Sessions {
 }
 
 impl Sessions {
-    pub fn show(&mut self, ctx: &egui::Context, ollama: Arc<Ollama>) {
+    pub fn show(&mut self, ctx: &egui::Context, ollama: &Ollama) {
         // check if tts stopped speaking
         let prev_is_speaking = self.is_speaking;
         self.is_speaking = if let Some(tts) = &self.tts {
@@ -81,7 +81,7 @@ impl Sessions {
         if let Some(chat) = self.get_selected_chat() {
             chat.show(
                 ctx,
-                ollama.clone(),
+                ollama,
                 tts,
                 prev_is_speaking && !is_speaking, // stopped_talking
             );

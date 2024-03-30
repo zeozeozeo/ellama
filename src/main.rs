@@ -1,7 +1,6 @@
 use eframe::egui;
 use ollama_rs::Ollama;
 use sessions::Sessions;
-use std::sync::Arc;
 
 mod chat;
 mod sessions;
@@ -20,14 +19,14 @@ async fn main() {
 
 struct Ellama {
     sessions: Sessions,
-    ollama: Arc<Ollama>,
+    ollama: Ollama,
 }
 
 impl Default for Ellama {
     fn default() -> Self {
         Self {
             sessions: Sessions::default(),
-            ollama: Arc::new(Ollama::default()),
+            ollama: Ollama::default(),
         }
     }
 }
@@ -48,6 +47,6 @@ impl Ellama {
 
 impl eframe::App for Ellama {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.sessions.show(ctx, self.ollama.clone());
+        self.sessions.show(ctx, &self.ollama);
     }
 }

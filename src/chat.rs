@@ -188,7 +188,6 @@ pub struct Chat {
     messages: Vec<Message>,
     context_messages: Vec<ChatMessage>,
     flower: CompletionFlower,
-    commonmark_cache: CommonMarkCache,
     retry_message_idx: Option<usize>,
     pub summary: String,
 }
@@ -201,7 +200,6 @@ impl Default for Chat {
             messages: vec![],
             context_messages: vec![],
             flower: CompletionFlower::new(1),
-            commonmark_cache: CommonMarkCache::default(),
             retry_message_idx: None,
             summary: String::new(),
         }
@@ -393,6 +391,7 @@ impl Chat {
         ollama: &Ollama,
         tts: SharedTts,
         stopped_speaking: bool,
+        commonmark_cache: &mut CommonMarkCache,
     ) {
         let mut modal = Modal::new(ctx, "chat_modal");
         let avail = ctx.available_rect();
@@ -428,7 +427,7 @@ impl Chat {
                         ui.add_space(16.0); // instead of centralpanel margin
                         for (i, message) in self.messages.iter_mut().enumerate() {
                             let prev_speaking = message.is_speaking;
-                            if message.show(ui, &mut self.commonmark_cache, tts.clone(), i) {
+                            if message.show(ui, commonmark_cache, tts.clone(), i) {
                                 self.retry_message_idx = Some(i - 1);
                             }
                             if !prev_speaking && message.is_speaking {

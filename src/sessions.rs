@@ -1,5 +1,6 @@
 use crate::chat::Chat;
 use eframe::egui;
+use egui_commonmark::CommonMarkCache;
 use egui_modal::Modal;
 use ollama_rs::Ollama;
 use parking_lot::RwLock;
@@ -18,9 +19,10 @@ pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 pub struct Sessions {
     tab: SessionTab,
     chats: Vec<Chat>,
-    selected_chat: Option<usize>,
+    selected_chat: usize,
     is_speaking: bool,
     tts: SharedTts,
+    commonmark_cache: CommonMarkCache,
 }
 
 impl Default for Sessions {
@@ -28,12 +30,13 @@ impl Default for Sessions {
         Self {
             tab: SessionTab::Chats,
             chats: vec![Chat::default()],
-            selected_chat: Some(0),
+            selected_chat: 0,
             is_speaking: false,
             tts: Tts::default()
                 .map_err(|e| log::error!("failed to initialize TTS: {e}"))
                 .map(|tts| Arc::new(RwLock::new(tts)))
                 .ok(),
+            commonmark_cache: CommonMarkCache::default(),
         }
     }
 }
@@ -76,16 +79,13 @@ impl Sessions {
             }
         }
 
-        let tts = self.tts.clone();
-        let is_speaking = self.is_speaking;
-        if let Some(chat) = self.get_selected_chat() {
-            chat.show(
-                ctx,
-                ollama,
-                tts,
-                prev_is_speaking && !is_speaking, // stopped_talking
-            );
-        }
+        self.chats[self.selected_chat].show(
+            ctx,
+            ollama,
+            self.tts.clone(),
+            prev_is_speaking && !self.is_speaking, // stopped_talking
+            &mut self.commonmark_cache,
+        );
 
         modal.show_dialog();
     }
@@ -109,11 +109,6 @@ impl Sessions {
         }
     }
 
-    #[inline]
-    fn get_selected_chat(&mut self) -> Option<&mut Chat> {
-        self.chats.get_mut(self.selected_chat?)
-    }
-
     fn show_chats(&mut self, ui: &mut egui::Ui) {
         if ui.button("➕ New Chat").clicked() {
             self.chats.push(Chat::default());
@@ -127,7 +122,7 @@ impl Sessions {
                 })
                 .clicked()
             {
-                self.selected_chat = Some(i);
+                self.selected_chat = i;
             }
         }
     }

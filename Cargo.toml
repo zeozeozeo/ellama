@@ -7,14 +7,14 @@ edition = "2021"
 
 [dependencies]
 catppuccin-egui = { git = "https://github.com/zeozeozeo/catppuccin-egui.git", branch = "egui-0.27" }
-eframe = "0.27.0"
-egui_commonmark = { git = "https://github.com/zeozeozeo/egui_commonmark.git", branch = "better-list-wrap", features = ["better_syntax_highlighting"] }
+eframe = "0.27"
+egui_commonmark = { git = "https://github.com/lampsitter/egui_commonmark.git", features = ["better_syntax_highlighting"] }
 env_logger = "0.11.3"
 flowync = { version = "5.1.0", features = ["compact"] }
 log = "0.4.21"
 ollama-rs = { version = "0.1.7", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1.14"
-egui-modal = { git = "https://github.com/zeozeozeo/egui-modal.git" }
+egui-modal = "0.3.6"
 tts = "0.26.0"
 parking_lot = "0.12.1"

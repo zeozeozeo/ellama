@@ -385,6 +385,20 @@ impl Chat {
             });
     }
 
+    pub fn last_message_contents(&self) -> Option<String> {
+        for message in self.messages.iter().rev() {
+            if message.content.is_empty() {
+                continue;
+            }
+            return Some(if message.is_user {
+                format!("You: {}", message.content)
+            } else {
+                message.content.to_string()
+            });
+        }
+        None
+    }
+
     pub fn show(
         &mut self,
         ctx: &egui::Context,

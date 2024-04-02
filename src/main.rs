@@ -4,6 +4,7 @@ use sessions::Sessions;
 
 mod chat;
 mod sessions;
+mod widgets;
 
 #[tokio::main]
 async fn main() {

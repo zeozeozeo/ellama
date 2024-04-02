@@ -1161,7 +1161,7 @@ dependencies = [
 [[package]]
 name = "egui_commonmark"
 version = "0.14.0"
-source = "git+https://github.com/zeozeozeo/egui_commonmark.git?branch=better-list-wrap#251c0f4c226e1b1ebefcba3784388f6de73b45f1"
+source = "git+https://github.com/zeozeozeo/egui_commonmark.git?branch=better-list-wrap#5e44db1cf75ed72ddaf43aa42f2748fd605750d8"
 dependencies = [
  "egui",
  "egui_extras",

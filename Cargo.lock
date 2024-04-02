@@ -1161,8 +1161,8 @@ dependencies = [
 
 [[package]]
 name = "egui_commonmark"
-version = "0.14.0"
-source = "git+https://github.com/lampsitter/egui_commonmark.git#930a5c5a6bcadaa0f64b8584cbd3534e7aec680f"
+version = "0.15.0"
+source = "git+https://github.com/lampsitter/egui_commonmark.git#bb6f6a7fedd81b9e2bcb0768f0fee0b870feda62"
 dependencies = [
  "egui",
  "egui_extras",
@@ -2537,9 +2537,7 @@ dependencies = [
 [[package]]
 name = "ollama-rs"
 version = "0.1.8"
-version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f05ba5ffaf4e59eb23a221677f0d0783191ad3888b235b84ab3da785d6e2a6e4"
 checksum = "f05ba5ffaf4e59eb23a221677f0d0783191ad3888b235b84ab3da785d6e2a6e4"
 dependencies = [
  "reqwest",
@@ -3571,9 +3569,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 [[package]]
 name = "tokio"
 version = "1.37.0"
-version = "1.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1adbebffeca75fcfd058afa480fb6c0b81e165a0323f9c9d39c9697e37c46787"
 checksum = "1adbebffeca75fcfd058afa480fb6c0b81e165a0323f9c9d39c9697e37c46787"
 dependencies = [
  "backtrace",

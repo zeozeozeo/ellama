@@ -1162,7 +1162,7 @@ dependencies = [
 [[package]]
 name = "egui_commonmark"
 version = "0.15.0"
-source = "git+https://github.com/lampsitter/egui_commonmark.git#bb6f6a7fedd81b9e2bcb0768f0fee0b870feda62"
+source = "git+https://github.com/lampsitter/egui_commonmark.git#707401837f99479021574c5cdfca01e6e00b0a74"
 dependencies = [
  "egui",
  "egui_extras",

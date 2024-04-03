@@ -94,14 +94,11 @@ pub fn highlight_easymark(egui_style: &egui::Style, mut text: &str) -> egui::tex
             style.quoted = true;
             skip = 2;
             // we don't preview indentation, because it is confusing
-        } else if start_of_line && text.starts_with("- ") {
+        } else if start_of_line && (text.starts_with("- ") || text.starts_with("* ")) {
             skip = 2;
             // we don't preview indentation, because it is confusing
-        } else if text.len() > 1
-            && text.starts_with('*')
-            && !(start_of_line && text.starts_with("* "))
-        {
-            skip = 1;
+        } else if text.starts_with("**") {
+            skip = 2;
             if style.strong {
                 // Include the character that is ending this style:
                 job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));

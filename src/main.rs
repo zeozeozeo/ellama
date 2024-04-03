@@ -3,6 +3,7 @@ use ollama_rs::Ollama;
 use sessions::Sessions;
 
 mod chat;
+mod easymark;
 mod sessions;
 mod widgets;
 

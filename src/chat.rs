@@ -1,4 +1,4 @@
-use crate::sessions::SharedTts;
+use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts};
 use eframe::egui::{self, Align, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -190,6 +190,7 @@ pub struct Chat {
     flower: CompletionFlower,
     retry_message_idx: Option<usize>,
     pub summary: String,
+    highlighter: MemoizedEasymarkHighlighter,
 }
 
 impl Default for Chat {
@@ -202,6 +203,7 @@ impl Default for Chat {
             flower: CompletionFlower::new(1),
             retry_message_idx: None,
             summary: String::new(),
+            highlighter: MemoizedEasymarkHighlighter::default(),
         }
     }
 }
@@ -332,9 +334,17 @@ impl Chat {
             ui.with_layout(
                 Layout::left_to_right(Align::Center).with_main_justify(true),
                 |ui| {
+                    let Self { highlighter, .. } = self;
+                    let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
+                        let mut layout_job = highlighter.highlight(ui.style(), easymark);
+                        layout_job.wrap.max_width = wrap_width;
+                        ui.fonts(|f| f.layout_job(layout_job))
+                    };
+
                     self.chatbox_height = egui::TextEdit::multiline(&mut self.chatbox)
                         .return_key(KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter))
                         .hint_text("Ask me anything…")
+                        .layouter(&mut layouter)
                         .show(ui)
                         .response
                         .rect

@@ -1,7 +1,7 @@
 use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts};
 use eframe::egui::{
-    self, pos2, vec2, Align, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers, Rect, Widget,
-    WidgetText,
+    self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
+    Pos2, Rect, Stroke,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -44,10 +44,16 @@ impl Default for Message {
     }
 }
 
-fn tts_control(tts: SharedTts, text: String, speak: bool) {
+const MESSAGE_ABORTED_TEXT: &str = "\\<aborted by user\\>";
+
+fn tts_control(tts: SharedTts, mut text: String, speak: bool) {
     std::thread::spawn(move || {
         if let Some(tts) = tts {
             if speak {
+                if text == MESSAGE_ABORTED_TEXT {
+                    // don't speak backslashes
+                    text = "Aborted by user".to_string();
+                }
                 let _ = tts
                     .write()
                     .speak(text, true)
@@ -200,7 +206,7 @@ pub struct Chat {
     retry_message_idx: Option<usize>,
     pub summary: String,
     highlighter: MemoizedEasymarkHighlighter,
-    stop_generation: Arc<AtomicBool>,
+    stop_generating: Arc<AtomicBool>,
 }
 
 impl Default for Chat {
@@ -214,7 +220,7 @@ impl Default for Chat {
             retry_message_idx: None,
             summary: String::new(),
             highlighter: MemoizedEasymarkHighlighter::default(),
-            stop_generation: Arc::new(AtomicBool::new(false)),
+            stop_generating: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -260,6 +266,7 @@ async fn request_completion(
             if stop_generating.load(Ordering::SeqCst) {
                 log::info!("stopping generation");
                 drop(stream);
+                stop_generating.store(false, Ordering::SeqCst);
                 break;
             }
         }
@@ -269,7 +276,11 @@ async fn request_completion(
         "completion request complete, response length: {}",
         response.len()
     );
-    handle.success(response.trim().to_string());
+    if response.is_empty() {
+        handle.success(MESSAGE_ABORTED_TEXT.to_string()); // prevent html tags
+    } else {
+        handle.success(response.trim().to_string());
+    }
     Ok(())
 }
 
@@ -310,7 +321,7 @@ impl Chat {
         // spawn a new thread to generate the completion
         let handle = self.flower.handle(); // recv'd by gui thread
         let ollama = ollama.clone();
-        let stop_generation = self.stop_generation.clone();
+        let stop_generation = self.stop_generating.clone();
         tokio::spawn(async move {
             handle.activate();
             let _ = request_completion(ollama, context_messages, &handle, stop_generation)
@@ -429,6 +440,38 @@ impl Chat {
         None
     }
 
+    fn stop_generating_button(&self, ui: &mut egui::Ui, radius: f32, pos: Pos2) {
+        let rect = Rect::from_min_max(pos + vec2(-radius, -radius), pos + vec2(radius, radius));
+        let (hovered, primary_clicked) = ui.input(|i| {
+            (
+                i.pointer
+                    .interact_pos()
+                    .map(|p| rect.contains(p))
+                    .unwrap_or(false),
+                i.pointer.primary_clicked(),
+            )
+        });
+        if hovered && primary_clicked {
+            self.stop_generating.store(true, Ordering::SeqCst);
+        } else {
+            ui.painter().circle(
+                pos,
+                radius,
+                if hovered {
+                    ui.style().visuals.faint_bg_color
+                } else {
+                    ui.style().visuals.window_fill
+                },
+                Stroke::new(2.0, ui.style().visuals.window_stroke.color),
+            );
+            ui.painter().rect_stroke(
+                rect.shrink(radius / 2.0 + 1.0),
+                2.0,
+                Stroke::new(2.0, Color32::DARK_GRAY),
+            );
+        }
+    }
+
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -440,10 +483,11 @@ impl Chat {
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
         let chatbox_panel_height = self.chatbox_height + 24.0;
+        let actual_chatbox_panel_height = chatbox_panel_height.min(max_height);
         let is_generating = self.flower_active();
 
         egui::TopBottomPanel::bottom("chatbox_panel")
-            .exact_height(chatbox_panel_height.min(max_height))
+            .exact_height(actual_chatbox_panel_height)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     self.show_chatbox(
@@ -464,7 +508,6 @@ impl Chat {
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
-                let centralpanel_width = ui.available_width();
                 egui::ScrollArea::both()
                     .auto_shrink(false)
                     .stick_to_bottom(true)
@@ -480,21 +523,18 @@ impl Chat {
                             }
                         }
                     });
-                // stop generation button
-                let text_wrap_width =
-                    centralpanel_width - 2.0 * ui.style().spacing.button_padding.x;
-                let galley = WidgetText::from("Stop Generating").into_galley(
-                    ui,
-                    Some(true),
-                    text_wrap_width,
-                    egui::TextStyle::Button,
-                );
 
-                let pos = pos2((centralpanel_width + galley.size().x * 2.0) / 2.0, 256.0);
-                ui.put(
-                    Rect::from_min_max(pos, pos2(pos.x + galley.size().x, pos.y + galley.size().y)),
-                    egui::Button::new(galley),
-                );
+                // stop generating button
+                if is_generating {
+                    self.stop_generating_button(
+                        ui,
+                        16.0,
+                        pos2(
+                            ui.cursor().min.x + 16.0,
+                            avail.height() - 16.0 * 2.0 - actual_chatbox_panel_height,
+                        ),
+                    );
+                }
             });
 
         if let Some(new_idx) = new_speaker {

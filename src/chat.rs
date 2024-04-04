@@ -1,4 +1,4 @@
-use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts};
+use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, utils};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
     Pos2, Rect, Stroke,
@@ -297,14 +297,13 @@ impl Chat {
         let prompt = self.chatbox.trim_end().to_string();
         self.messages.push(Message::user(prompt.clone()));
 
-        if self.summary.len() < 24 {
-            for word in prompt.split_whitespace() {
-                self.summary += word;
-                if self.summary.len() >= 24 {
-                    self.summary += "…";
-                    break;
-                }
-                self.summary += " ";
+        const MAX_SUMMARY_LENGTH: usize = 24;
+        if self.summary.is_empty() {
+            if prompt.len() > MAX_SUMMARY_LENGTH {
+                self.summary = utils::capitalize_first_letter(&prompt[0..MAX_SUMMARY_LENGTH]);
+                self.summary += "…";
+            } else {
+                self.summary = utils::capitalize_first_letter(&prompt);
             }
         }
 

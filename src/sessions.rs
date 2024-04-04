@@ -163,8 +163,16 @@ impl Sessions {
             .last_message_contents()
             .unwrap_or_else(|| "No recent messages".to_string());
 
+        let summary = chat.summary.clone();
+
         ui.horizontal(|ui| {
-            ui.add(egui::Label::new("Chat").selectable(false));
+            ui.add(if summary.is_empty() {
+                egui::Label::new("New Chat")
+                    .selectable(false)
+                    .truncate(true)
+            } else {
+                egui::Label::new(summary).selectable(false)
+            });
             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(

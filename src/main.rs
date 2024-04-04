@@ -6,6 +6,7 @@ mod chat;
 mod easymark;
 mod sessions;
 mod widgets;
+mod utils;
 
 #[tokio::main]
 async fn main() {

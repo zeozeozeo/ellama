@@ -59,6 +59,12 @@ impl Sessions {
         }
 
         let mut modal = Modal::new(ctx, "sessions_main_modal");
+        let mut chat_modal = Modal::new(ctx, "chat_main_modal").with_close_on_outside_click(true);
+
+        // show dialogs created on the previous frame, if we move this into the end of the function
+        // it won't be located in the center of the window but in the center of the centralpanel instead
+        modal.show_dialog();
+        chat_modal.show_dialog();
 
         let avail_width = ctx.available_rect().width();
         egui::SidePanel::left("sessions_panel")
@@ -77,7 +83,7 @@ impl Sessions {
                     ctx.request_repaint();
                     requested_repaint = true;
                 }
-                chat.poll_flower(&mut modal);
+                chat.poll_flower(&mut chat_modal);
             }
         }
 
@@ -88,8 +94,6 @@ impl Sessions {
             prev_is_speaking && !self.is_speaking, // stopped_talking
             &mut self.commonmark_cache,
         );
-
-        modal.show_dialog();
     }
 
     fn show_left_panel(&mut self, ui: &mut egui::Ui) {

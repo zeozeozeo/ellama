@@ -1,5 +1,8 @@
 use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts};
-use eframe::egui::{self, Align, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers};
+use eframe::egui::{
+    self, pos2, vec2, Align, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers, Rect, Widget,
+    WidgetText,
+};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
 use flowync::{error::Compact, CompactFlower, CompactHandle};
@@ -7,7 +10,13 @@ use ollama_rs::{
     generation::chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
     Ollama,
 };
-use std::time::Instant;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 use tokio_stream::StreamExt;
 
 #[derive(Clone)]
@@ -191,6 +200,7 @@ pub struct Chat {
     retry_message_idx: Option<usize>,
     pub summary: String,
     highlighter: MemoizedEasymarkHighlighter,
+    stop_generation: Arc<AtomicBool>,
 }
 
 impl Default for Chat {
@@ -204,6 +214,7 @@ impl Default for Chat {
             retry_message_idx: None,
             summary: String::new(),
             highlighter: MemoizedEasymarkHighlighter::default(),
+            stop_generation: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -212,6 +223,7 @@ async fn request_completion(
     ollama: Ollama,
     messages: Vec<ChatMessage>,
     handle: &CompletionFlowerHandle,
+    stop_generating: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!(
         "requesting completion... (history length: {})",
@@ -228,6 +240,7 @@ async fn request_completion(
 
     let mut response = String::new();
     let mut is_whitespace = true;
+
     while let Some(Ok(res)) = stream.next().await {
         if let Some(msg) = res.message {
             if is_whitespace && msg.content.trim().is_empty() {
@@ -243,6 +256,12 @@ async fn request_completion(
             // send message to gui thread
             handle.send(content.to_string());
             response += content;
+
+            if stop_generating.load(Ordering::SeqCst) {
+                log::info!("stopping generation");
+                drop(stream);
+                break;
+            }
         }
     }
 
@@ -291,9 +310,10 @@ impl Chat {
         // spawn a new thread to generate the completion
         let handle = self.flower.handle(); // recv'd by gui thread
         let ollama = ollama.clone();
+        let stop_generation = self.stop_generation.clone();
         tokio::spawn(async move {
             handle.activate();
-            let _ = request_completion(ollama, context_messages, &handle)
+            let _ = request_completion(ollama, context_messages, &handle, stop_generation)
                 .await
                 .map_err(|e| {
                     log::error!("failed to request completion: {e}");
@@ -417,10 +437,10 @@ impl Chat {
         stopped_speaking: bool,
         commonmark_cache: &mut CommonMarkCache,
     ) {
-        let mut modal = Modal::new(ctx, "chat_modal");
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
         let chatbox_panel_height = self.chatbox_height + 24.0;
+        let is_generating = self.flower_active();
 
         egui::TopBottomPanel::bottom("chatbox_panel")
             .exact_height(chatbox_panel_height.min(max_height))
@@ -429,7 +449,7 @@ impl Chat {
                     self.show_chatbox(
                         ui,
                         chatbox_panel_height >= max_height,
-                        self.flower_active(),
+                        is_generating,
                         ollama,
                     );
                 });
@@ -444,6 +464,7 @@ impl Chat {
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
+                let centralpanel_width = ui.available_width();
                 egui::ScrollArea::both()
                     .auto_shrink(false)
                     .stick_to_bottom(true)
@@ -459,6 +480,21 @@ impl Chat {
                             }
                         }
                     });
+                // stop generation button
+                let text_wrap_width =
+                    centralpanel_width - 2.0 * ui.style().spacing.button_padding.x;
+                let galley = WidgetText::from("Stop Generating").into_galley(
+                    ui,
+                    Some(true),
+                    text_wrap_width,
+                    egui::TextStyle::Button,
+                );
+
+                let pos = pos2((centralpanel_width + galley.size().x * 2.0) / 2.0, 256.0);
+                ui.put(
+                    Rect::from_min_max(pos, pos2(pos.x + galley.size().x, pos.y + galley.size().y)),
+                    egui::Button::new(galley),
+                );
             });
 
         if let Some(new_idx) = new_speaker {
@@ -476,7 +512,5 @@ impl Chat {
                 msg.is_speaking = false;
             }
         }
-
-        modal.show_dialog();
     }
 }

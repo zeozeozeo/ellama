@@ -1,8 +1,12 @@
 use crate::chat::Chat;
-use eframe::egui::{self, Color32, Frame, Layout, Rounding, Stroke};
+use eframe::egui::{self, Color32, Frame, Layout, RichText, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
 use egui_modal::{Icon, Modal};
-use ollama_rs::Ollama;
+use flowync::{CompactFlower, CompactHandle};
+use ollama_rs::{
+    models::{LocalModel, ModelInfo},
+    Ollama,
+};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tts::Tts;
@@ -16,6 +20,26 @@ enum SessionTab {
 
 pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 
+enum OllamaResponse {
+    Models(Vec<LocalModel>),
+    ModelInfo(ModelInfo),
+}
+
+#[derive(Default, PartialEq, Eq)]
+enum OllamaFlowerActivity {
+    /// Idle, default
+    #[default]
+    Idle,
+    /// List models
+    ListModels,
+    /// Get model info
+    ModelInfo,
+}
+
+// <progress, response, error>
+type OllamaFlower = CompactFlower<(), OllamaResponse, String>;
+type OllamaFlowerHandle = CompactHandle<(), OllamaResponse, String>;
+
 pub struct Sessions {
     tab: SessionTab,
     chats: Vec<Chat>,
@@ -24,6 +48,12 @@ pub struct Sessions {
     is_speaking: bool,
     tts: SharedTts,
     commonmark_cache: CommonMarkCache,
+    flower: OllamaFlower,
+    models: Vec<LocalModel>,
+    models_error: String,
+    flower_activity: OllamaFlowerActivity,
+    selected_model: String,
+    model_info: Option<ModelInfo>,
 }
 
 impl Default for Sessions {
@@ -39,11 +69,70 @@ impl Default for Sessions {
                 .map(|tts| Arc::new(RwLock::new(tts)))
                 .ok(),
             commonmark_cache: CommonMarkCache::default(),
+            flower: OllamaFlower::new(1),
+            models: vec![],
+            models_error: String::new(),
+            flower_activity: OllamaFlowerActivity::default(),
+            selected_model: String::new(),
+            model_info: None,
+        }
+    }
+}
+
+async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle) {
+    log::debug!("requesting local models...");
+    match ollama.list_local_models().await {
+        Ok(models) => {
+            log::debug!("{} local models: {models:?}", models.len());
+            handle.success(OllamaResponse::Models(models));
+        }
+        Err(e) => {
+            log::error!("failed to list local models: {e}");
+            handle.error(e.to_string());
+        }
+    }
+}
+
+async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaFlowerHandle) {
+    match ollama.show_model_info(model_name).await {
+        Ok(info) => {
+            log::debug!("model info: {info:?}");
+            handle.success(OllamaResponse::ModelInfo(info));
+        }
+        Err(e) => {
+            log::error!("failed to request model info: {e}");
+            handle.error(e.to_string());
         }
     }
 }
 
 impl Sessions {
+    pub fn new(ollama: Ollama) -> Self {
+        let mut sessions = Self::default();
+        sessions.list_models(ollama);
+        sessions
+    }
+
+    fn list_models(&mut self, ollama: Ollama) {
+        let handle = self.flower.handle();
+        self.flower_activity = OllamaFlowerActivity::ListModels;
+        tokio::spawn(async move {
+            handle.activate();
+            list_local_models(ollama, &handle).await;
+        });
+    }
+
+    fn request_model_info(&mut self, ollama: Ollama) {
+        let handle = self.flower.handle();
+        let model_name = self.selected_model.clone();
+        self.flower_activity = OllamaFlowerActivity::ModelInfo;
+        self.model_info = None;
+        tokio::spawn(async move {
+            handle.activate();
+            request_model_info(ollama, model_name, &handle).await;
+        });
+    }
+
     pub fn show(&mut self, ctx: &egui::Context, ollama: &Ollama) {
         // check if tts stopped speaking
         let prev_is_speaking = self.is_speaking;
@@ -54,9 +143,7 @@ impl Sessions {
         };
 
         // if speaking, continuously check if stopped
-        if self.is_speaking {
-            ctx.request_repaint();
-        }
+        let mut request_repaint = self.is_speaking;
 
         let mut modal = Modal::new(ctx, "sessions_main_modal");
         let mut chat_modal = Modal::new(ctx, "chat_main_modal").with_close_on_outside_click(true);
@@ -71,20 +158,24 @@ impl Sessions {
             .resizable(true)
             .max_width(avail_width * 0.5)
             .show(ctx, |ui| {
-                self.show_left_panel(ui);
+                self.show_left_panel(ui, ollama);
                 ui.allocate_space(ui.available_size());
             });
 
         // poll all flowers
-        let mut requested_repaint = false;
         for chat in self.chats.iter_mut() {
             if chat.flower_active() {
-                if !requested_repaint {
-                    ctx.request_repaint();
-                    requested_repaint = true;
-                }
+                request_repaint = true;
                 chat.poll_flower(&mut chat_modal);
             }
+        }
+        if self.flower.is_active() {
+            request_repaint = true;
+            self.poll_ollama_flower();
+        }
+
+        if request_repaint {
+            ctx.request_repaint();
         }
 
         self.chats[self.selected_chat].show(
@@ -93,10 +184,11 @@ impl Sessions {
             self.tts.clone(),
             prev_is_speaking && !self.is_speaking, // stopped_talking
             &mut self.commonmark_cache,
+            self.selected_model.clone(),
         );
     }
 
-    fn show_left_panel(&mut self, ui: &mut egui::Ui) {
+    fn show_left_panel(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
         ui.add_space(ui.style().spacing.window_margin.top);
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, SessionTab::Chats, "Chats");
@@ -132,14 +224,101 @@ impl Sessions {
                 });
             }
             SessionTab::Model => {
-                ui.label("Model");
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.show_model_tab(ui, ollama);
+                });
+            }
+        }
+    }
+
+    fn poll_ollama_flower(&mut self) {
+        self.flower.extract(|()| ()).finalize(|resp| match resp {
+            Ok(OllamaResponse::Models(models)) => {
+                self.models = models;
+            }
+            Ok(OllamaResponse::ModelInfo(info)) => {
+                self.model_info = Some(info);
+            }
+            Err(flowync::error::Compact::Suppose(e)) => {
+                self.models_error = e;
+            }
+            Err(flowync::error::Compact::Panicked(e)) => {
+                log::error!("task panicked: {e}");
+                self.models_error = format!("Task panicked: {e}");
+            }
+        });
+    }
+
+    fn show_model_tab(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
+        ui.label("Default model used for new chats.");
+        if !self.models_error.is_empty() {
+            ui.label(
+                RichText::new(" Error! ")
+                    .strong()
+                    .background_color(Color32::RED)
+                    .color(Color32::WHITE),
+            );
+            ui.colored_label(Color32::RED, &self.models_error);
+        }
+
+        let active = self.flower.is_active();
+        if active && self.flower_activity == OllamaFlowerActivity::ListModels {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                ui.label("Loading models…");
+            });
+        } else {
+            let mut changed = false;
+            egui::ComboBox::new("model_selector_combobox", "Model")
+                .selected_text(&self.selected_model)
+                .show_ui(ui, |ui| {
+                    for model in &self.models {
+                        if ui
+                            .selectable_label(self.selected_model == model.name, &model.name)
+                            .clicked()
+                        {
+                            self.selected_model = model.name.clone();
+                            changed = true;
+                        }
+                    }
+                });
+            if changed {
+                self.models_error.clear();
+                self.request_model_info(ollama.clone());
+            }
+        }
+
+        let loading_model_info = active && self.flower_activity == OllamaFlowerActivity::ModelInfo;
+        if self.model_info.is_some() || loading_model_info {
+            ui.separator();
+        }
+        if loading_model_info {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                ui.label("Loading model info…");
+            });
+        }
+
+        if let Some(info) = &self.model_info {
+            for (heading, mut text) in [
+                ("License", info.license.as_str()),
+                ("Modelfile", info.modelfile.as_str()),
+                ("Parameters", info.parameters.as_str()),
+                ("Template", info.template.as_str()),
+            ] {
+                if !text.is_empty() {
+                    ui.collapsing(heading, |ui| {
+                        ui.code_editor(&mut text);
+                    });
+                }
             }
         }
     }
 
     #[inline]
     fn add_default_chat(&mut self) {
-        self.chats.push(Chat::default());
+        // id 1 is already used, and we (probably) don't want to reuse ids for flowers
+        self.chats.push(Chat::new(self.chats.len() + 2));
     }
 
     fn remove_chat(&mut self, idx: usize) {
@@ -192,6 +371,16 @@ impl Sessions {
                     }
                     chat_removed = true;
                 }
+                if ui
+                    .add(
+                        egui::Button::new("Edit")
+                            .small()
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE),
+                    )
+                    .on_hover_text("Edit")
+                    .clicked()
+                {}
             });
         });
 
@@ -205,7 +394,7 @@ impl Sessions {
     }
 
     /// Returns whether the chat should be selected as the current one
-    fn show_sidepanel_chat(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> bool {
+    fn show_chat_in_sidepanel(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> bool {
         let mut chat_removed = false;
         let resp = Frame::group(ui.style())
             .rounding(Rounding::same(6.0))
@@ -248,7 +437,7 @@ impl Sessions {
             }
             ui.separator();
             for i in 0..self.chats.len() {
-                if self.show_sidepanel_chat(ui, i, modal) {
+                if self.show_chat_in_sidepanel(ui, i, modal) {
                     self.selected_chat = i;
                 }
                 ui.add_space(2.0);

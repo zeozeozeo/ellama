@@ -1,4 +1,4 @@
-use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, utils};
+use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
     Pos2, Rect, Stroke,
@@ -230,16 +230,14 @@ async fn request_completion(
     messages: Vec<ChatMessage>,
     handle: &CompletionFlowerHandle,
     stop_generating: Arc<AtomicBool>,
+    selected_model: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!(
         "requesting completion... (history length: {})",
         messages.len()
     );
     let mut stream: ChatMessageResponseStream = ollama
-        .send_chat_messages_stream(ChatMessageRequest::new(
-            "starling-lm:7b-alpha-q5_K_S".to_string(),
-            messages,
-        ))
+        .send_chat_messages_stream(ChatMessageRequest::new(selected_model, messages))
         .await?;
 
     log::info!("reading response...");
@@ -285,7 +283,15 @@ async fn request_completion(
 }
 
 impl Chat {
-    fn send_message(&mut self, ollama: &Ollama) {
+    #[inline]
+    pub fn new(id: usize) -> Self {
+        Self {
+            flower: CompletionFlower::new(id),
+            ..Default::default()
+        }
+    }
+
+    fn send_message(&mut self, ollama: &Ollama, selected_model: String) {
         // don't send empty messages
         if self.chatbox.is_empty() {
             return;
@@ -299,11 +305,20 @@ impl Chat {
 
         const MAX_SUMMARY_LENGTH: usize = 24;
         if self.summary.is_empty() {
+            self.summary = prompt
+                .chars()
+                .take(MAX_SUMMARY_LENGTH)
+                .enumerate()
+                .map(|(i, c)| {
+                    if i == 0 {
+                        c.to_uppercase().next().unwrap()
+                    } else {
+                        c
+                    }
+                })
+                .collect::<String>();
             if prompt.len() > MAX_SUMMARY_LENGTH {
-                self.summary = utils::capitalize_first_letter(&prompt[0..MAX_SUMMARY_LENGTH]);
                 self.summary += "…";
-            } else {
-                self.summary = utils::capitalize_first_letter(&prompt);
             }
         }
 
@@ -323,12 +338,18 @@ impl Chat {
         let stop_generation = self.stop_generating.clone();
         tokio::spawn(async move {
             handle.activate();
-            let _ = request_completion(ollama, context_messages, &handle, stop_generation)
-                .await
-                .map_err(|e| {
-                    log::error!("failed to request completion: {e}");
-                    handle.error(e.to_string());
-                });
+            let _ = request_completion(
+                ollama,
+                context_messages,
+                &handle,
+                stop_generation,
+                selected_model,
+            )
+            .await
+            .map_err(|e| {
+                log::error!("failed to request completion: {e}");
+                handle.error(e.to_string());
+            });
         });
     }
 
@@ -338,12 +359,13 @@ impl Chat {
         is_max_height: bool,
         is_generating: bool,
         ollama: &Ollama,
+        selected_model: String,
     ) {
         if let Some(idx) = self.retry_message_idx.take() {
             self.chatbox = self.messages[idx].content.clone();
             self.messages.remove(idx + 1);
             self.messages.remove(idx);
-            self.send_message(ollama);
+            self.send_message(ollama, selected_model.clone());
         }
 
         if is_max_height {
@@ -358,7 +380,7 @@ impl Chat {
                         .clicked()
                     && !is_generating
                 {
-                    self.send_message(ollama);
+                    self.send_message(ollama, selected_model.clone());
                 }
             });
             ui.with_layout(
@@ -382,7 +404,7 @@ impl Chat {
                     if !is_generating
                         && ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none())
                     {
-                        self.send_message(ollama);
+                        self.send_message(ollama, selected_model);
                     }
                 },
             );
@@ -457,14 +479,19 @@ impl Chat {
                 pos,
                 radius,
                 if hovered {
-                    ui.style().visuals.faint_bg_color
+                    if ui.style().visuals.dark_mode {
+                        let c = ui.style().visuals.faint_bg_color;
+                        Color32::from_rgb(c.r(), c.g(), c.b())
+                    } else {
+                        Color32::WHITE
+                    }
                 } else {
                     ui.style().visuals.window_fill
                 },
                 Stroke::new(2.0, ui.style().visuals.window_stroke.color),
             );
             ui.painter().rect_stroke(
-                rect.shrink(radius / 2.0 + 1.0),
+                rect.shrink(radius / 2.0 + 1.2),
                 2.0,
                 Stroke::new(2.0, Color32::DARK_GRAY),
             );
@@ -478,6 +505,7 @@ impl Chat {
         tts: SharedTts,
         stopped_speaking: bool,
         commonmark_cache: &mut CommonMarkCache,
+        selected_model: String,
     ) {
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
@@ -494,6 +522,7 @@ impl Chat {
                         chatbox_panel_height >= max_height,
                         is_generating,
                         ollama,
+                        selected_model,
                     );
                 });
             });
@@ -529,8 +558,8 @@ impl Chat {
                         ui,
                         16.0,
                         pos2(
-                            ui.cursor().min.x + 16.0,
-                            avail.height() - 16.0 * 2.0 - actual_chatbox_panel_height,
+                            ui.cursor().max.x - 32.0,
+                            avail.height() - 32.0 - actual_chatbox_panel_height,
                         ),
                     );
                 }

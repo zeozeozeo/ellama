@@ -6,7 +6,6 @@ mod chat;
 mod easymark;
 mod sessions;
 mod widgets;
-mod utils;
 
 #[tokio::main]
 async fn main() {
@@ -27,9 +26,10 @@ struct Ellama {
 
 impl Default for Ellama {
     fn default() -> Self {
+        let ollama = Ollama::default();
         Self {
-            sessions: Sessions::default(),
-            ollama: Ollama::default(),
+            sessions: Sessions::new(ollama.clone()),
+            ollama,
         }
     }
 }
@@ -42,6 +42,8 @@ impl Ellama {
         // for e.g. egui::PaintCallback.
         //catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MACCHIATO);
         //cc.egui_ctx.style_mut(|s| s.wrap = Some(true));
+        cc.egui_ctx
+            .style_mut(|s| s.visuals = egui::Visuals::light());
         cc.egui_ctx
             .style_mut(|s| s.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand));
         Self::default()

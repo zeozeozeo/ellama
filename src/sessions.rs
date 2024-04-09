@@ -8,7 +8,10 @@ use ollama_rs::{
     Ollama,
 };
 use parking_lot::RwLock;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tts::Tts;
 
 #[derive(Default, PartialEq)]
@@ -21,6 +24,7 @@ enum SessionTab {
 pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 
 enum OllamaResponse {
+    Nothing,
     Models(Vec<LocalModel>),
     ModelInfo(ModelInfo),
 }
@@ -54,6 +58,9 @@ pub struct Sessions {
     flower_activity: OllamaFlowerActivity,
     selected_model: String,
     model_info: Option<ModelInfo>,
+    last_model_refresh: Instant,
+    last_request_time: Instant,
+    is_auto_refresh: bool,
 }
 
 impl Default for Sessions {
@@ -75,11 +82,14 @@ impl Default for Sessions {
             flower_activity: OllamaFlowerActivity::default(),
             selected_model: String::new(),
             model_info: None,
+            last_model_refresh: Instant::now(),
+            last_request_time: Instant::now(),
+            is_auto_refresh: true,
         }
     }
 }
 
-async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle) {
+async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle, is_auto_refresh: bool) {
     log::debug!("requesting local models...");
     match ollama.list_local_models().await {
         Ok(models) => {
@@ -87,8 +97,12 @@ async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle) {
             handle.success(OllamaResponse::Models(models));
         }
         Err(e) => {
-            log::error!("failed to list local models: {e}");
-            handle.error(e.to_string());
+            log::error!("failed to list local models: {e} (auto-refresh: {is_auto_refresh})");
+            if is_auto_refresh {
+                handle.success(OllamaResponse::Nothing);
+            } else {
+                handle.error(e.to_string());
+            }
         }
     }
 }
@@ -109,16 +123,18 @@ async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaF
 impl Sessions {
     pub fn new(ollama: Ollama) -> Self {
         let mut sessions = Self::default();
-        sessions.list_models(ollama);
+        sessions.list_models(ollama, false);
         sessions
     }
 
-    fn list_models(&mut self, ollama: Ollama) {
+    fn list_models(&mut self, ollama: Ollama, is_auto_refresh: bool) {
         let handle = self.flower.handle();
         self.flower_activity = OllamaFlowerActivity::ListModels;
+        self.is_auto_refresh = is_auto_refresh;
+        self.last_request_time = Instant::now();
         tokio::spawn(async move {
             handle.activate();
-            list_local_models(ollama, &handle).await;
+            list_local_models(ollama, &handle, is_auto_refresh).await;
         });
     }
 
@@ -127,6 +143,8 @@ impl Sessions {
         let model_name = self.selected_model.clone();
         self.flower_activity = OllamaFlowerActivity::ModelInfo;
         self.model_info = None;
+        self.models_error.clear();
+        self.last_request_time = Instant::now();
         tokio::spawn(async move {
             handle.activate();
             request_model_info(ollama, model_name, &handle).await;
@@ -171,7 +189,7 @@ impl Sessions {
         }
         if self.flower.is_active() {
             request_repaint = true;
-            self.poll_ollama_flower();
+            self.poll_ollama_flower(&modal);
         }
 
         if request_repaint {
@@ -231,26 +249,42 @@ impl Sessions {
         }
     }
 
-    fn poll_ollama_flower(&mut self) {
-        self.flower.extract(|()| ()).finalize(|resp| match resp {
-            Ok(OllamaResponse::Models(models)) => {
-                self.models = models;
-            }
-            Ok(OllamaResponse::ModelInfo(info)) => {
-                self.model_info = Some(info);
-            }
-            Err(flowync::error::Compact::Suppose(e)) => {
-                self.models_error = e;
-            }
-            Err(flowync::error::Compact::Panicked(e)) => {
-                log::error!("task panicked: {e}");
-                self.models_error = format!("Task panicked: {e}");
-            }
+    fn poll_ollama_flower(&mut self, modal: &Modal) {
+        self.flower.extract(|()| ()).finalize(|resp| {
+            match resp {
+                Ok(OllamaResponse::Nothing) => {}
+                Ok(OllamaResponse::Models(models)) => {
+                    self.models = models;
+                    self.last_model_refresh = Instant::now();
+                }
+                Ok(OllamaResponse::ModelInfo(info)) => {
+                    self.model_info = Some(info);
+                }
+                Err(flowync::error::Compact::Suppose(e)) => {
+                    self.models_error = e.clone();
+                    modal
+                        .dialog()
+                        .with_icon(Icon::Error)
+                        .with_title("Ollama request failed")
+                        .with_body(e)
+                        .open();
+                }
+                Err(flowync::error::Compact::Panicked(e)) => {
+                    log::error!("task panicked: {e}");
+                    self.models_error = format!("Task panicked: {e}");
+                    modal
+                        .dialog()
+                        .with_icon(Icon::Error)
+                        .with_title("Ollama request task panicked")
+                        .with_body(self.models_error.clone())
+                        .open();
+                }
+            };
+            self.is_auto_refresh = false;
         });
     }
 
     fn show_model_tab(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
-        ui.label("Default model used for new chats.");
         if !self.models_error.is_empty() {
             ui.label(
                 RichText::new(" Error! ")
@@ -259,15 +293,34 @@ impl Sessions {
                     .color(Color32::WHITE),
             );
             ui.colored_label(Color32::RED, &self.models_error);
+            if ui.button("⟳ Retry").clicked() {
+                self.models_error.clear();
+                self.list_models(ollama.clone(), false);
+                if !self.selected_model.is_empty() {
+                    self.request_model_info(ollama.clone());
+                }
+            }
+            ui.separator();
         }
 
         let active = self.flower.is_active();
-        if active && self.flower_activity == OllamaFlowerActivity::ListModels {
+        if active
+            && self.flower_activity == OllamaFlowerActivity::ListModels
+            && !self.is_auto_refresh
+        {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
-                ui.label("Loading models…");
+                ui.label("Loading model list…");
+                ui.add_enabled(
+                    false,
+                    egui::Label::new(format!(
+                        "{:.1}s",
+                        self.last_request_time.elapsed().as_secs_f64()
+                    )),
+                );
             });
         } else {
+            ui.label("Default model used for new chats.");
             let mut changed = false;
             egui::ComboBox::new("model_selector_combobox", "Model")
                 .selected_text(&self.selected_model)
@@ -283,7 +336,6 @@ impl Sessions {
                     }
                 });
             if changed {
-                self.models_error.clear();
                 self.request_model_info(ollama.clone());
             }
         }
@@ -296,7 +348,20 @@ impl Sessions {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
                 ui.label("Loading model info…");
+                ui.add_enabled(
+                    false,
+                    egui::Label::new(format!(
+                        "{:.1}s",
+                        self.last_request_time.elapsed().as_secs_f64()
+                    )),
+                );
             });
+        }
+
+        const REFRESH_DURATION: Duration = Duration::from_secs(10);
+        ui.ctx().request_repaint_after(REFRESH_DURATION);
+        if self.last_model_refresh.elapsed() > REFRESH_DURATION {
+            self.list_models(ollama.clone(), true);
         }
 
         if let Some(info) = &self.model_info {

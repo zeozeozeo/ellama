@@ -20,14 +20,19 @@ use std::{
 };
 use tokio_stream::StreamExt;
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 struct Message {
     content: String,
     is_user: bool,
+    #[serde(skip)]
     is_generating: bool,
+    #[serde(skip)]
     requested_at: Instant,
+    #[serde(skip)]
     clicked_copy: bool,
     is_error: bool,
+    #[serde(skip)]
     is_speaking: bool,
 }
 
@@ -198,16 +203,23 @@ impl Message {
 type CompletionFlower = CompactFlower<String, String, String>;
 type CompletionFlowerHandle = CompactHandle<String, String, String>;
 
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct Chat {
     chatbox: String,
+    #[serde(skip)]
     chatbox_height: f32,
     messages: Vec<Message>,
     context_messages: Vec<ChatMessage>,
+    #[serde(skip)]
     flower: CompletionFlower,
+    #[serde(skip)]
     retry_message_idx: Option<usize>,
     pub summary: String,
+    #[serde(skip)]
     chatbox_highlighter: MemoizedEasymarkHighlighter,
     stop_generating: Arc<AtomicBool>,
+    #[serde(skip)]
     virtual_list: VirtualList,
 }
 

@@ -14,7 +14,7 @@ use std::{
 };
 use tts::Tts;
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, serde::Serialize, serde::Deserialize)]
 enum SessionTab {
     #[default]
     Chats,
@@ -43,9 +43,10 @@ enum OllamaFlowerActivity {
 type OllamaFlower = CompactFlower<(), OllamaResponse, (String, bool)>;
 type OllamaFlowerHandle = CompactHandle<(), OllamaResponse, (String, bool)>;
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 struct SelectedModel {
     name: String,
+    #[serde(default)]
     modified_ago: String,
     modified_at: String,
     size: u64,
@@ -65,22 +66,35 @@ impl From<LocalModel> for SelectedModel {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct Sessions {
     tab: SessionTab,
     chats: Vec<Chat>,
     selected_chat: usize,
+    #[serde(skip)]
     chat_marked_for_deletion: usize,
+    #[serde(skip)]
     is_speaking: bool,
+    #[serde(skip)]
     tts: SharedTts,
+    #[serde(skip)]
     commonmark_cache: CommonMarkCache,
+    #[serde(skip)]
     flower: OllamaFlower,
+    #[serde(skip)]
     models: Vec<LocalModel>,
+    #[serde(skip)]
     models_error: String,
+    #[serde(skip)]
     flower_activity: OllamaFlowerActivity,
     selected_model: SelectedModel,
     model_info: Option<ModelInfo>,
+    #[serde(skip)]
     last_model_refresh: Instant,
+    #[serde(skip)]
     last_request_time: Instant,
+    #[serde(skip)]
     is_auto_refresh: bool,
 }
 
@@ -145,7 +159,7 @@ impl Sessions {
         sessions
     }
 
-    fn list_models(&mut self, ollama: Ollama, is_auto_refresh: bool) {
+    pub fn list_models(&mut self, ollama: Ollama, is_auto_refresh: bool) {
         let handle = self.flower.handle();
         self.flower_activity = OllamaFlowerActivity::ListModels;
         self.is_auto_refresh = is_auto_refresh;

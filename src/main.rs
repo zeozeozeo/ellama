@@ -7,20 +7,24 @@ mod easymark;
 mod sessions;
 mod widgets;
 
+const TITLE: &str = "Ellama";
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "Ellama",
+        TITLE,
         native_options,
         Box::new(|cc| Box::new(Ellama::new(cc))),
     )
     .expect("failed to run app");
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
 struct Ellama {
     sessions: Sessions,
+    #[serde(skip)]
     ollama: Ollama,
 }
 
@@ -42,10 +46,32 @@ impl Ellama {
         // for e.g. egui::PaintCallback.
         //catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MACCHIATO);
         //cc.egui_ctx.style_mut(|s| s.wrap = Some(true));
-        cc.egui_ctx
-            .style_mut(|s| s.visuals = egui::Visuals::light());
+        // cc.egui_ctx
+        //     .style_mut(|s| s.visuals = egui::Visuals::light());
+
+        // change visuals
         cc.egui_ctx
             .style_mut(|s| s.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand));
+
+        // try to restore app
+        log::debug!(
+            "trying to restore app state from storage: {:?}",
+            eframe::storage_dir(TITLE)
+        );
+
+        if let Some(storage) = cc.storage {
+            if let Some(mut app_state) = eframe::get_value::<Self>(storage, eframe::APP_KEY) {
+                log::debug!("app state successfully restored from storage");
+                app_state
+                    .sessions
+                    .list_models(app_state.ollama.clone(), true);
+                return app_state;
+            }
+        }
+
+        log::debug!("app state is not saved in storage, using default app state");
+
+        // default app
         Self::default()
     }
 }
@@ -53,5 +79,10 @@ impl Ellama {
 impl eframe::App for Ellama {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.sessions.show(ctx, &self.ollama);
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        log::debug!("saving app state");
+        eframe::set_value(storage, eframe::APP_KEY, self);
     }
 }

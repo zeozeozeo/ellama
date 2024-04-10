@@ -53,8 +53,9 @@ struct SelectedModel {
 
 impl From<LocalModel> for SelectedModel {
     fn from(model: LocalModel) -> Self {
-        let time = chrono::DateTime::parse_from_rfc3339(&model.modified_at).unwrap();
-        let ago = timeago::Formatter::new().convert_chrono(time, chrono::Utc::now());
+        let ago = chrono::DateTime::parse_from_rfc3339(&model.modified_at)
+            .map(|time| timeago::Formatter::new().convert_chrono(time, chrono::Utc::now()))
+            .unwrap_or_else(|e| e.to_string());
         Self {
             name: model.name,
             modified_ago: ago,

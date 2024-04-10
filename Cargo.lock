@@ -908,6 +908,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "concat-idents"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f76990911f2267d837d9d0ad060aa63aaad170af40904b29461734c339030d4d"
+dependencies = [
+ "quote",
+ "syn 2.0.57",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1122,7 +1132,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "web-time",
+ "web-time 0.2.4",
  "winapi",
  "winit",
 ]
@@ -1163,7 +1173,7 @@ dependencies = [
  "log",
  "thiserror",
  "type-map",
- "web-time",
+ "web-time 0.2.4",
  "wgpu",
  "winit",
 ]
@@ -1180,7 +1190,7 @@ dependencies = [
  "log",
  "raw-window-handle 0.6.0",
  "smithay-clipboard",
- "web-time",
+ "web-time 0.2.4",
  "webbrowser",
  "winit",
 ]
@@ -1227,6 +1237,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_inbox"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "407661378da891106fc04b119844c8029d6a231009b924ec5cc9ef52a7afd893"
+dependencies = [
+ "egui",
+ "parking_lot",
+]
+
+[[package]]
+name = "egui_infinite_scroll"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e12c5f3716e8457bbfbd831a64e10dd2cc00f6708793850fb836f8d2f11be690"
+dependencies = [
+ "egui",
+ "egui_inbox",
+ "egui_virtual_list",
+ "hello_egui_utils",
+ "web-time 1.1.0",
+]
+
+[[package]]
+name = "egui_virtual_list"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "142d3a0ad2ae4743e323ad1cb384bffd45abc36dac6f9833f0980c2b4d76af1a"
+dependencies = [
+ "egui",
+ "web-time 1.1.0",
+]
+
+[[package]]
 name = "either"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1242,6 +1285,7 @@ dependencies = [
  "eframe",
  "egui-modal",
  "egui_commonmark",
+ "egui_infinite_scroll",
  "env_logger",
  "flowync",
  "log",
@@ -1867,6 +1911,16 @@ dependencies = [
  "thiserror",
  "widestring",
  "winapi",
+]
+
+[[package]]
+name = "hello_egui_utils"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "859b60deb25f062a31770a730c1a46fd7051a9dbfe632eec11d4fce2693bb3c4"
+dependencies = [
+ "concat-idents",
+ "egui",
 ]
 
 [[package]]
@@ -4150,6 +4204,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "webbrowser"
 version = "0.8.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4615,7 +4679,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-plasma",
  "web-sys",
- "web-time",
+ "web-time 0.2.4",
  "windows-sys 0.48.0",
  "x11-dl",
  "x11rb",

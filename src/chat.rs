@@ -4,6 +4,7 @@ use eframe::egui::{
     Pos2, Rect, Stroke,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use egui_infinite_scroll::InfiniteScroll;
 use egui_modal::{Icon, Modal};
 use flowync::{error::Compact, CompactFlower, CompactHandle};
 use ollama_rs::{
@@ -15,11 +16,12 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
+use tokio::sync::RwLock;
 use tokio_stream::StreamExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Message {
     content: String,
     is_user: bool,
@@ -200,7 +202,7 @@ type CompletionFlowerHandle = CompactHandle<String, String, String>;
 pub struct Chat {
     chatbox: String,
     chatbox_height: f32,
-    messages: Vec<Message>,
+    messages: InfiniteScroll<Message, Duration>,
     context_messages: Vec<ChatMessage>,
     flower: CompletionFlower,
     retry_message_idx: Option<usize>,
@@ -214,7 +216,7 @@ impl Default for Chat {
         Self {
             chatbox: String::new(),
             chatbox_height: 0.0,
-            messages: vec![],
+            messages: InfiniteScroll::new(),
             context_messages: vec![],
             flower: CompletionFlower::new(1),
             retry_message_idx: None,
@@ -298,10 +300,10 @@ impl Chat {
         }
 
         // remove old error messages
-        self.messages.retain(|m| !m.is_error);
+        self.messages.items.retain(|m| !m.is_error);
 
         let prompt = self.chatbox.trim_end().to_string();
-        self.messages.push(Message::user(prompt.clone()));
+        self.messages.items.push(Message::user(prompt.clone()));
 
         const MAX_SUMMARY_LENGTH: usize = 24;
         if self.summary.is_empty() {
@@ -330,7 +332,7 @@ impl Chat {
         let context_messages = self.context_messages.clone();
 
         // get ready for assistant response
-        self.messages.push(Message::assistant(String::new()));
+        self.messages.items.push(Message::assistant(String::new()));
 
         // spawn a new thread to generate the completion
         let handle = self.flower.handle(); // recv'd by gui thread
@@ -362,9 +364,9 @@ impl Chat {
         selected_model: String,
     ) {
         if let Some(idx) = self.retry_message_idx.take() {
-            self.chatbox = self.messages[idx].content.clone();
-            self.messages.remove(idx + 1);
-            self.messages.remove(idx);
+            self.chatbox = self.messages.items[idx].content.clone();
+            self.messages.items.remove(idx + 1);
+            self.messages.items.remove(idx);
             self.send_message(ollama, selected_model.clone());
         }
 
@@ -422,10 +424,10 @@ impl Chat {
     pub fn poll_flower(&mut self, modal: &mut Modal) {
         self.flower
             .extract(|progress| {
-                self.messages.last_mut().unwrap().content += progress.as_str();
+                self.messages.items.last_mut().unwrap().content += progress.as_str();
             })
             .finalize(|result| {
-                let message = self.messages.last_mut().unwrap();
+                let message = self.messages.items.last_mut().unwrap();
 
                 if let Ok(content) = result {
                     message.content = content;
@@ -448,7 +450,7 @@ impl Chat {
     }
 
     pub fn last_message_contents(&self) -> Option<String> {
-        for message in self.messages.iter().rev() {
+        for message in self.messages.items.iter().rev() {
             if message.content.is_empty() {
                 continue;
             }
@@ -528,6 +530,7 @@ impl Chat {
             });
 
         let mut new_speaker: Option<usize> = None;
+
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style()).inner_margin(Margin {
                 left: 16.0,
@@ -541,7 +544,8 @@ impl Chat {
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         ui.add_space(16.0); // instead of centralpanel margin
-                        for (i, message) in self.messages.iter_mut().enumerate() {
+                        for i in row_range {
+                            let message = &mut self.messages[i];
                             let prev_speaking = message.is_speaking;
                             if message.show(ui, commonmark_cache, tts.clone(), i) {
                                 self.retry_message_idx = Some(i - 1);
@@ -551,7 +555,6 @@ impl Chat {
                             }
                         }
                     });
-
                 // stop generating button
                 if is_generating {
                     self.stop_generating_button(

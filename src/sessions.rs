@@ -24,7 +24,6 @@ enum SessionTab {
 pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 
 enum OllamaResponse {
-    Nothing,
     Models(Vec<LocalModel>),
     ModelInfo(ModelInfo),
 }
@@ -40,9 +39,30 @@ enum OllamaFlowerActivity {
     ModelInfo,
 }
 
-// <progress, response, error>
-type OllamaFlower = CompactFlower<(), OllamaResponse, String>;
-type OllamaFlowerHandle = CompactHandle<(), OllamaResponse, String>;
+// <progress, response, (error, autorefresh)>
+type OllamaFlower = CompactFlower<(), OllamaResponse, (String, bool)>;
+type OllamaFlowerHandle = CompactHandle<(), OllamaResponse, (String, bool)>;
+
+#[derive(Default)]
+struct SelectedModel {
+    name: String,
+    modified_ago: String,
+    modified_at: String,
+    size: u64,
+}
+
+impl From<LocalModel> for SelectedModel {
+    fn from(model: LocalModel) -> Self {
+        let time = chrono::DateTime::parse_from_rfc3339(&model.modified_at).unwrap();
+        let ago = timeago::Formatter::new().convert_chrono(time, chrono::Utc::now());
+        Self {
+            name: model.name,
+            modified_ago: ago,
+            modified_at: model.modified_at,
+            size: model.size,
+        }
+    }
+}
 
 pub struct Sessions {
     tab: SessionTab,
@@ -56,7 +76,7 @@ pub struct Sessions {
     models: Vec<LocalModel>,
     models_error: String,
     flower_activity: OllamaFlowerActivity,
-    selected_model: String,
+    selected_model: SelectedModel,
     model_info: Option<ModelInfo>,
     last_model_refresh: Instant,
     last_request_time: Instant,
@@ -65,6 +85,7 @@ pub struct Sessions {
 
 impl Default for Sessions {
     fn default() -> Self {
+        let now = Instant::now();
         Self {
             tab: SessionTab::Chats,
             chats: vec![Chat::default()],
@@ -80,17 +101,17 @@ impl Default for Sessions {
             models: vec![],
             models_error: String::new(),
             flower_activity: OllamaFlowerActivity::default(),
-            selected_model: String::new(),
+            selected_model: SelectedModel::default(),
             model_info: None,
-            last_model_refresh: Instant::now(),
-            last_request_time: Instant::now(),
+            last_model_refresh: now,
+            last_request_time: now,
             is_auto_refresh: true,
         }
     }
 }
 
 async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle, is_auto_refresh: bool) {
-    log::debug!("requesting local models...");
+    log::debug!("requesting local models... (auto-refresh: {is_auto_refresh})");
     match ollama.list_local_models().await {
         Ok(models) => {
             log::debug!("{} local models: {models:?}", models.len());
@@ -98,11 +119,7 @@ async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle, is_auto_
         }
         Err(e) => {
             log::error!("failed to list local models: {e} (auto-refresh: {is_auto_refresh})");
-            if is_auto_refresh {
-                handle.success(OllamaResponse::Nothing);
-            } else {
-                handle.error(e.to_string());
-            }
+            handle.error((e.to_string(), is_auto_refresh));
         }
     }
 }
@@ -115,7 +132,7 @@ async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaF
         }
         Err(e) => {
             log::error!("failed to request model info: {e}");
-            handle.error(e.to_string());
+            handle.error((e.to_string(), false));
         }
     }
 }
@@ -132,6 +149,7 @@ impl Sessions {
         self.flower_activity = OllamaFlowerActivity::ListModels;
         self.is_auto_refresh = is_auto_refresh;
         self.last_request_time = Instant::now();
+        self.last_model_refresh = self.last_request_time;
         tokio::spawn(async move {
             handle.activate();
             list_local_models(ollama, &handle, is_auto_refresh).await;
@@ -140,7 +158,7 @@ impl Sessions {
 
     fn request_model_info(&mut self, ollama: Ollama) {
         let handle = self.flower.handle();
-        let model_name = self.selected_model.clone();
+        let model_name = self.selected_model.name.clone();
         self.flower_activity = OllamaFlowerActivity::ModelInfo;
         self.model_info = None;
         self.models_error.clear();
@@ -202,7 +220,7 @@ impl Sessions {
             self.tts.clone(),
             prev_is_speaking && !self.is_speaking, // stopped_talking
             &mut self.commonmark_cache,
-            self.selected_model.clone(),
+            self.selected_model.name.clone(),
         );
     }
 
@@ -252,7 +270,6 @@ impl Sessions {
     fn poll_ollama_flower(&mut self, modal: &Modal) {
         self.flower.extract(|()| ()).finalize(|resp| {
             match resp {
-                Ok(OllamaResponse::Nothing) => {}
                 Ok(OllamaResponse::Models(models)) => {
                     self.models = models;
                     self.last_model_refresh = Instant::now();
@@ -260,14 +277,16 @@ impl Sessions {
                 Ok(OllamaResponse::ModelInfo(info)) => {
                     self.model_info = Some(info);
                 }
-                Err(flowync::error::Compact::Suppose(e)) => {
+                Err(flowync::error::Compact::Suppose((e, is_auto_refresh))) => {
                     self.models_error = e.clone();
-                    modal
-                        .dialog()
-                        .with_icon(Icon::Error)
-                        .with_title("Ollama request failed")
-                        .with_body(e)
-                        .open();
+                    if !is_auto_refresh {
+                        modal
+                            .dialog()
+                            .with_icon(Icon::Error)
+                            .with_title("Ollama request failed")
+                            .with_body(e)
+                            .open();
+                    }
                 }
                 Err(flowync::error::Compact::Panicked(e)) => {
                     log::error!("task panicked: {e}");
@@ -296,9 +315,12 @@ impl Sessions {
             if ui.button("⟳ Retry").clicked() {
                 self.models_error.clear();
                 self.list_models(ollama.clone(), false);
-                if !self.selected_model.is_empty() {
+                if !self.selected_model.name.is_empty() {
                     self.request_model_info(ollama.clone());
                 }
+            }
+            if self.models.is_empty() {
+                return;
             }
             ui.separator();
         }
@@ -323,14 +345,14 @@ impl Sessions {
             ui.label("Default model used for new chats.");
             let mut changed = false;
             egui::ComboBox::new("model_selector_combobox", "Model")
-                .selected_text(&self.selected_model)
+                .selected_text(&self.selected_model.name)
                 .show_ui(ui, |ui| {
                     for model in &self.models {
                         if ui
-                            .selectable_label(self.selected_model == model.name, &model.name)
+                            .selectable_label(self.selected_model.name == model.name, &model.name)
                             .clicked()
                         {
-                            self.selected_model = model.name.clone();
+                            self.selected_model = model.clone().into();
                             changed = true;
                         }
                     }
@@ -358,10 +380,32 @@ impl Sessions {
             });
         }
 
-        const REFRESH_DURATION: Duration = Duration::from_secs(10);
-        ui.ctx().request_repaint_after(REFRESH_DURATION);
-        if self.last_model_refresh.elapsed() > REFRESH_DURATION {
-            self.list_models(ollama.clone(), true);
+        {
+            const REFRESH_DURATION: Duration = Duration::from_secs(10);
+            let refresh_elapsed = self.last_model_refresh.elapsed();
+            if !ui.ctx().has_requested_repaint() {
+                ui.ctx().request_repaint_after(REFRESH_DURATION);
+            }
+            if refresh_elapsed > REFRESH_DURATION {
+                self.list_models(ollama.clone(), true);
+            }
+        }
+
+        // selected model info grid
+        if !self.selected_model.name.is_empty() {
+            egui::Grid::new("selected_model_info_grid")
+                .num_columns(2)
+                .show(ui, |ui| {
+                    ui.label("Size");
+                    ui.label(format!("{}", bytesize::ByteSize(self.selected_model.size)))
+                        .on_hover_text(format!("{} bytes", self.selected_model.size));
+                    ui.end_row();
+
+                    ui.label("Modified");
+                    ui.add(egui::Label::new(&self.selected_model.modified_ago).truncate(true))
+                        .on_hover_text(&self.selected_model.modified_at);
+                    ui.end_row();
+                });
         }
 
         if let Some(info) = &self.model_info {

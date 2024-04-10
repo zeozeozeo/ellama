@@ -99,7 +99,7 @@ impl Default for Sessions {
                 .ok(),
             commonmark_cache: CommonMarkCache::default(),
             flower: OllamaFlower::new(1),
-            models: vec![],
+            models: Vec::new(),
             models_error: String::new(),
             flower_activity: OllamaFlowerActivity::default(),
             selected_model: SelectedModel::default(),

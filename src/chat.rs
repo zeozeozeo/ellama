@@ -5,6 +5,7 @@ use eframe::egui::{
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
+use egui_virtual_list::VirtualList;
 use flowync::{error::Compact, CompactFlower, CompactHandle};
 use ollama_rs::{
     generation::chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
@@ -205,8 +206,9 @@ pub struct Chat {
     flower: CompletionFlower,
     retry_message_idx: Option<usize>,
     pub summary: String,
-    highlighter: MemoizedEasymarkHighlighter,
+    chatbox_highlighter: MemoizedEasymarkHighlighter,
     stop_generating: Arc<AtomicBool>,
+    virtual_list: VirtualList,
 }
 
 impl Default for Chat {
@@ -214,13 +216,14 @@ impl Default for Chat {
         Self {
             chatbox: String::new(),
             chatbox_height: 0.0,
-            messages: vec![],
-            context_messages: vec![],
+            messages: Vec::new(),
+            context_messages: Vec::new(),
             flower: CompletionFlower::new(1),
             retry_message_idx: None,
             summary: String::new(),
-            highlighter: MemoizedEasymarkHighlighter::default(),
+            chatbox_highlighter: MemoizedEasymarkHighlighter::default(),
             stop_generating: Arc::new(AtomicBool::new(false)),
+            virtual_list: VirtualList::new(),
         }
     }
 }
@@ -386,7 +389,10 @@ impl Chat {
             ui.with_layout(
                 Layout::left_to_right(Align::Center).with_main_justify(true),
                 |ui| {
-                    let Self { highlighter, .. } = self;
+                    let Self {
+                        chatbox_highlighter: highlighter,
+                        ..
+                    } = self;
                     let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
                         let mut layout_job = highlighter.highlight(ui.style(), easymark);
                         layout_job.wrap.max_width = wrap_width;
@@ -498,6 +504,33 @@ impl Chat {
         }
     }
 
+    fn show_chat_scrollarea(
+        &mut self,
+        ui: &mut egui::Ui,
+        commonmark_cache: &mut CommonMarkCache,
+        tts: SharedTts,
+    ) -> Option<usize> {
+        let mut new_speaker: Option<usize> = None;
+        egui::ScrollArea::both()
+            .stick_to_bottom(true)
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                self.virtual_list
+                    .ui_custom_layout(ui, self.messages.len(), |ui, index| {
+                        let message = &mut self.messages[index];
+                        let prev_speaking = message.is_speaking;
+                        if message.show(ui, commonmark_cache, tts.clone(), index) {
+                            self.retry_message_idx = Some(index - 1);
+                        }
+                        if !prev_speaking && message.is_speaking {
+                            new_speaker = Some(index);
+                        }
+                        1 // 1 rendered item per row
+                    });
+            });
+        new_speaker
+    }
+
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -531,26 +564,15 @@ impl Chat {
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style()).inner_margin(Margin {
                 left: 16.0,
-                right: 0.0,
+                right: 16.0,
                 top: 0.0,
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
-                egui::ScrollArea::both()
-                    .auto_shrink(false)
-                    .stick_to_bottom(true)
-                    .show(ui, |ui| {
-                        ui.add_space(16.0); // instead of centralpanel margin
-                        for (i, message) in self.messages.iter_mut().enumerate() {
-                            let prev_speaking = message.is_speaking;
-                            if message.show(ui, commonmark_cache, tts.clone(), i) {
-                                self.retry_message_idx = Some(i - 1);
-                            }
-                            if !prev_speaking && message.is_speaking {
-                                new_speaker = Some(i);
-                            }
-                        }
-                    });
+                ui.add_space(16.0);
+                if let Some(new) = self.show_chat_scrollarea(ui, commonmark_cache, tts) {
+                    new_speaker = Some(new);
+                }
 
                 // stop generating button
                 if is_generating {

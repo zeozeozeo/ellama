@@ -2,13 +2,14 @@ use crate::{chat::Chat, widgets::ModelPicker};
 use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
 use egui_modal::{Icon, Modal};
+use egui_virtual_list::VirtualList;
 use flowync::{CompactFlower, CompactHandle};
 use ollama_rs::{
     models::{LocalModel, ModelInfo},
     Ollama,
 };
 use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc, time::Instant};
 use tts::Tts;
 
 #[derive(Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -90,7 +91,10 @@ pub struct Sessions {
     #[serde(skip)]
     is_auto_refresh: bool,
     model_picker: ModelPicker,
+    #[serde(skip)]
     pending_model_infos: HashMap<String, ()>,
+    #[serde(skip)]
+    virtual_list: Rc<RefCell<VirtualList>>,
 }
 
 impl Default for Sessions {
@@ -115,6 +119,7 @@ impl Default for Sessions {
             is_auto_refresh: true,
             model_picker: ModelPicker::default(),
             pending_model_infos: HashMap::new(),
+            virtual_list: Rc::new(RefCell::new(VirtualList::default())),
         }
     }
 }
@@ -473,13 +478,17 @@ impl Sessions {
         ui.add_space(2.0);
 
         // TODO: use show_rows() instead of show()
+        let vlist = self.virtual_list.clone();
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for i in 0..self.chats.len() {
-                if self.show_chat_in_sidepanel(ui, i, modal) {
-                    self.selected_chat = i;
-                }
-                ui.add_space(2.0);
-            }
+            vlist
+                .borrow_mut()
+                .ui_custom_layout(ui, self.chats.len(), |ui, i| {
+                    if self.show_chat_in_sidepanel(ui, i, modal) {
+                        self.selected_chat = i;
+                    }
+                    ui.add_space(2.0);
+                    1
+                });
         });
     }
 }

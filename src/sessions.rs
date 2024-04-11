@@ -1,5 +1,5 @@
-use crate::chat::Chat;
-use eframe::egui::{self, Color32, Frame, Layout, RichText, Rounding, Stroke};
+use crate::{chat::Chat, widgets::ModelPicker};
+use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
 use egui_modal::{Icon, Modal};
 use flowync::{CompactFlower, CompactHandle};
@@ -8,10 +8,7 @@ use ollama_rs::{
     Ollama,
 };
 use parking_lot::RwLock;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tts::Tts;
 
 #[derive(Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -25,7 +22,7 @@ pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 
 enum OllamaResponse {
     Models(Vec<LocalModel>),
-    ModelInfo(ModelInfo),
+    ModelInfo { name: String, info: ModelInfo },
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -85,17 +82,15 @@ pub struct Sessions {
     #[serde(skip)]
     models: Vec<LocalModel>,
     #[serde(skip)]
-    models_error: String,
-    #[serde(skip)]
     flower_activity: OllamaFlowerActivity,
-    selected_model: SelectedModel,
-    model_info: Option<ModelInfo>,
     #[serde(skip)]
     last_model_refresh: Instant,
     #[serde(skip)]
     last_request_time: Instant,
     #[serde(skip)]
     is_auto_refresh: bool,
+    model_picker: ModelPicker,
+    pending_model_infos: HashMap<String, ()>,
 }
 
 impl Default for Sessions {
@@ -114,13 +109,12 @@ impl Default for Sessions {
             commonmark_cache: CommonMarkCache::default(),
             flower: OllamaFlower::new(1),
             models: Vec::new(),
-            models_error: String::new(),
             flower_activity: OllamaFlowerActivity::default(),
-            selected_model: SelectedModel::default(),
-            model_info: None,
             last_model_refresh: now,
             last_request_time: now,
             is_auto_refresh: true,
+            model_picker: ModelPicker::default(),
+            pending_model_infos: HashMap::new(),
         }
     }
 }
@@ -140,13 +134,16 @@ async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle, is_auto_
 }
 
 async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaFlowerHandle) {
-    match ollama.show_model_info(model_name).await {
+    match ollama.show_model_info(model_name.clone()).await {
         Ok(info) => {
-            log::debug!("model info: {info:?}");
-            handle.success(OllamaResponse::ModelInfo(info));
+            log::debug!("model `{model_name}` info: {info:?}");
+            handle.success(OllamaResponse::ModelInfo {
+                name: model_name,
+                info,
+            });
         }
         Err(e) => {
-            log::error!("failed to request model info: {e}");
+            log::error!("failed to request model `{model_name}` info: {e}");
             handle.error((e.to_string(), false));
         }
     }
@@ -171,13 +168,11 @@ impl Sessions {
         });
     }
 
-    fn request_model_info(&mut self, ollama: Ollama) {
+    fn request_model_info(&mut self, model_name: String, ollama: Ollama) {
         let handle = self.flower.handle();
-        let model_name = self.selected_model.name.clone();
         self.flower_activity = OllamaFlowerActivity::ModelInfo;
-        self.model_info = None;
-        self.models_error.clear();
         self.last_request_time = Instant::now();
+        self.pending_model_infos.insert(model_name.clone(), ());
         tokio::spawn(async move {
             handle.activate();
             request_model_info(ollama, model_name, &handle).await;
@@ -235,7 +230,6 @@ impl Sessions {
             self.tts.clone(),
             prev_is_speaking && !self.is_speaking, // stopped_talking
             &mut self.commonmark_cache,
-            self.selected_model.name.clone(),
         );
     }
 
@@ -289,11 +283,14 @@ impl Sessions {
                     self.models = models;
                     self.last_model_refresh = Instant::now();
                 }
-                Ok(OllamaResponse::ModelInfo(info)) => {
-                    self.model_info = Some(info);
+                Ok(OllamaResponse::ModelInfo { name, info }) => {
+                    self.pending_model_infos.remove(&name);
+                    self.model_picker.on_new_model_info(&name, &info);
+                    for chat in self.chats.iter_mut() {
+                        chat.model_picker.on_new_model_info(&name, &info);
+                    }
                 }
                 Err(flowync::error::Compact::Suppose((e, is_auto_refresh))) => {
-                    self.models_error = e.clone();
                     if !is_auto_refresh {
                         modal
                             .dialog()
@@ -305,12 +302,11 @@ impl Sessions {
                 }
                 Err(flowync::error::Compact::Panicked(e)) => {
                     log::error!("task panicked: {e}");
-                    self.models_error = format!("Task panicked: {e}");
                     modal
                         .dialog()
                         .with_icon(Icon::Error)
                         .with_title("Ollama request task panicked")
-                        .with_body(self.models_error.clone())
+                        .with_body(format!("Task panicked: {e}"))
                         .open();
                 }
             };
@@ -319,130 +315,37 @@ impl Sessions {
     }
 
     fn show_model_tab(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
-        if !self.models_error.is_empty() {
-            ui.label(
-                RichText::new(" Error! ")
-                    .strong()
-                    .background_color(Color32::RED)
-                    .color(Color32::WHITE),
-            );
-            ui.colored_label(Color32::RED, &self.models_error);
-            if ui.button("⟳ Retry").clicked() {
-                self.models_error.clear();
-                self.list_models(ollama.clone(), false);
-                if !self.selected_model.name.is_empty() {
-                    self.request_model_info(ollama.clone());
-                }
-            }
-            if self.models.is_empty() {
-                return;
-            }
-            ui.separator();
-        }
-
         let active = self.flower.is_active();
-        if active
+        let loading_models = active
             && self.flower_activity == OllamaFlowerActivity::ListModels
-            && !self.is_auto_refresh
-        {
-            ui.horizontal(|ui| {
-                ui.add(egui::Spinner::new());
-                ui.label("Loading model list…");
-                ui.add_enabled(
-                    false,
-                    egui::Label::new(format!(
-                        "{:.1}s",
-                        self.last_request_time.elapsed().as_secs_f64()
-                    )),
-                );
-            });
-        } else {
-            ui.label("Default model used for new chats.");
-            let mut changed = false;
-            egui::ComboBox::new("model_selector_combobox", "Model")
-                .selected_text(&self.selected_model.name)
-                .show_ui(ui, |ui| {
-                    for model in &self.models {
-                        if ui
-                            .selectable_label(self.selected_model.name == model.name, &model.name)
-                            .clicked()
-                        {
-                            self.selected_model = model.clone().into();
-                            changed = true;
-                        }
-                    }
-                });
-            if changed {
-                self.request_model_info(ollama.clone());
-            }
-        }
+            && !self.is_auto_refresh;
 
-        let loading_model_info = active && self.flower_activity == OllamaFlowerActivity::ModelInfo;
-        if self.model_info.is_some() || loading_model_info {
-            ui.separator();
-        }
-        if loading_model_info {
-            ui.horizontal(|ui| {
-                ui.add(egui::Spinner::new());
-                ui.label("Loading model info…");
-                ui.add_enabled(
-                    false,
-                    egui::Label::new(format!(
-                        "{:.1}s",
-                        self.last_request_time.elapsed().as_secs_f64()
-                    )),
-                );
-            });
-        }
-
-        {
-            const REFRESH_DURATION: Duration = Duration::from_secs(10);
-            let refresh_elapsed = self.last_model_refresh.elapsed();
-            if !ui.ctx().has_requested_repaint() {
-                ui.ctx().request_repaint_after(REFRESH_DURATION);
-            }
-            if refresh_elapsed > REFRESH_DURATION {
-                self.list_models(ollama.clone(), true);
-            }
-        }
-
-        // selected model info grid
-        if !self.selected_model.name.is_empty() {
-            egui::Grid::new("selected_model_info_grid")
-                .num_columns(2)
-                .show(ui, |ui| {
-                    ui.label("Size");
-                    ui.label(format!("{}", bytesize::ByteSize(self.selected_model.size)))
-                        .on_hover_text(format!("{} bytes", self.selected_model.size));
-                    ui.end_row();
-
-                    ui.label("Modified");
-                    ui.add(egui::Label::new(&self.selected_model.modified_ago).truncate(true))
-                        .on_hover_text(&self.selected_model.modified_at);
-                    ui.end_row();
-                });
-        }
-
-        if let Some(info) = &self.model_info {
-            for (heading, mut text) in [
-                ("License", info.license.as_str()),
-                ("Modelfile", info.modelfile.as_str()),
-                ("Parameters", info.parameters.as_str()),
-                ("Template", info.template.as_str()),
-            ] {
-                if !text.is_empty() {
-                    ui.collapsing(heading, |ui| {
-                        ui.code_editor(&mut text);
-                    });
+        let mut request_info_for: Option<String> = None;
+        ui.label("Default model for new chats.");
+        self.model_picker.show(
+            ui,
+            if loading_models {
+                None
+            } else {
+                Some(&self.models)
+            },
+            |name| {
+                if !self.pending_model_infos.contains_key(name) {
+                    request_info_for = Some(name.to_string());
                 }
-            }
+            },
+        );
+
+        if let Some(name) = request_info_for {
+            self.request_model_info(name, ollama.clone());
         }
     }
 
     #[inline]
     fn add_default_chat(&mut self) {
         // id 1 is already used, and we (probably) don't want to reuse ids for flowers
-        self.chats.push(Chat::new(self.chats.len() + 2));
+        self.chats
+            .push(Chat::new(self.chats.len() + 2, self.model_picker.clone()));
     }
 
     fn remove_chat(&mut self, idx: usize) {
@@ -460,7 +363,7 @@ impl Sessions {
         let Some(chat) = &self.chats.get(idx) else {
             return false;
         };
-        let mut chat_removed = false;
+        let mut ignore_click = false;
 
         let last_message = chat
             .last_message_contents()
@@ -493,7 +396,7 @@ impl Sessions {
                         self.chat_marked_for_deletion = idx;
                         modal.open();
                     }
-                    chat_removed = true;
+                    ignore_click = true;
                 }
                 if ui
                     .add(
@@ -504,7 +407,10 @@ impl Sessions {
                     )
                     .on_hover_text("Edit")
                     .clicked()
-                {}
+                {
+                    ignore_click = true;
+                    log::info!("edit");
+                }
             });
         });
 
@@ -514,12 +420,12 @@ impl Sessions {
                 .selectable(false)
                 .truncate(true),
         );
-        chat_removed
+        ignore_click
     }
 
     /// Returns whether the chat should be selected as the current one
     fn show_chat_in_sidepanel(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> bool {
-        let mut chat_removed = false;
+        let mut ignore_click = false;
         let resp = Frame::group(ui.style())
             .rounding(Rounding::same(6.0))
             .stroke(Stroke::new(2.0, ui.style().visuals.window_stroke.color))
@@ -529,7 +435,7 @@ impl Sessions {
                 ui.style().visuals.window_fill
             })
             .show(ui, |ui| {
-                chat_removed = self.show_chat_frame(ui, idx, modal);
+                ignore_click = self.show_chat_frame(ui, idx, modal);
             })
             .response;
 
@@ -549,17 +455,25 @@ impl Sessions {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
-        !chat_removed && primary_clicked && hovered
+        !ignore_click && primary_clicked && hovered
     }
 
     fn show_chats(&mut self, ui: &mut egui::Ui, modal: &Modal) {
-        // TODO: use show_rows() instead of show()
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            if ui.button("➕ New Chat").clicked() {
+        ui.vertical_centered_justified(|ui| {
+            if ui
+                .add(egui::Button::new("➕ New Chat").min_size(vec2(0.0, 24.0)))
+                .on_hover_text("Create a new chat")
+                .clicked()
+            {
                 self.add_default_chat();
                 self.selected_chat = self.chats.len() - 1;
             }
-            ui.separator();
+        });
+
+        ui.add_space(2.0);
+
+        // TODO: use show_rows() instead of show()
+        egui::ScrollArea::vertical().show(ui, |ui| {
             for i in 0..self.chats.len() {
                 if self.show_chat_in_sidepanel(ui, i, modal) {
                     self.selected_chat = i;

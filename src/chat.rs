@@ -1,4 +1,4 @@
-use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts};
+use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets::ModelPicker};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
     Pos2, Rect, Stroke,
@@ -50,7 +50,7 @@ impl Default for Message {
     }
 }
 
-const MESSAGE_ABORTED_TEXT: &str = "\\<aborted by user\\>";
+const MESSAGE_ABORTED_TEXT: &str = "\\<empty message\\>";
 
 fn tts_control(tts: SharedTts, mut text: String, speak: bool) {
     std::thread::spawn(move || {
@@ -58,7 +58,7 @@ fn tts_control(tts: SharedTts, mut text: String, speak: bool) {
             if speak {
                 if text == MESSAGE_ABORTED_TEXT {
                     // don't speak backslashes
-                    text = "Aborted by user".to_string();
+                    text = "Empty message".to_string();
                 }
                 let _ = tts
                     .write()
@@ -221,6 +221,7 @@ pub struct Chat {
     stop_generating: Arc<AtomicBool>,
     #[serde(skip)]
     virtual_list: VirtualList,
+    pub model_picker: ModelPicker,
 }
 
 impl Default for Chat {
@@ -236,6 +237,7 @@ impl Default for Chat {
             chatbox_highlighter: MemoizedEasymarkHighlighter::default(),
             stop_generating: Arc::new(AtomicBool::new(false)),
             virtual_list: VirtualList::new(),
+            model_picker: ModelPicker::default(),
         }
     }
 }
@@ -299,14 +301,15 @@ async fn request_completion(
 
 impl Chat {
     #[inline]
-    pub fn new(id: usize) -> Self {
+    pub fn new(id: usize, model_picker: ModelPicker) -> Self {
         Self {
             flower: CompletionFlower::new(id),
+            model_picker,
             ..Default::default()
         }
     }
 
-    fn send_message(&mut self, ollama: &Ollama, selected_model: String) {
+    fn send_message(&mut self, ollama: &Ollama) {
         // don't send empty messages
         if self.chatbox.is_empty() {
             return;
@@ -351,6 +354,7 @@ impl Chat {
         let handle = self.flower.handle(); // recv'd by gui thread
         let ollama = ollama.clone();
         let stop_generation = self.stop_generating.clone();
+        let selected_model = self.model_picker.selected.name.clone();
         tokio::spawn(async move {
             handle.activate();
             let _ = request_completion(
@@ -374,13 +378,12 @@ impl Chat {
         is_max_height: bool,
         is_generating: bool,
         ollama: &Ollama,
-        selected_model: String,
     ) {
         if let Some(idx) = self.retry_message_idx.take() {
             self.chatbox = self.messages[idx].content.clone();
             self.messages.remove(idx + 1);
             self.messages.remove(idx);
-            self.send_message(ollama, selected_model.clone());
+            self.send_message(ollama);
         }
 
         if is_max_height {
@@ -395,7 +398,7 @@ impl Chat {
                         .clicked()
                     && !is_generating
                 {
-                    self.send_message(ollama, selected_model.clone());
+                    self.send_message(ollama);
                 }
             });
             ui.with_layout(
@@ -422,7 +425,7 @@ impl Chat {
                     if !is_generating
                         && ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none())
                     {
-                        self.send_message(ollama, selected_model);
+                        self.send_message(ollama);
                     }
                 },
             );
@@ -497,6 +500,7 @@ impl Chat {
                 pos,
                 radius,
                 if hovered {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     if ui.style().visuals.dark_mode {
                         let c = ui.style().visuals.faint_bg_color;
                         Color32::from_rgb(c.r(), c.g(), c.b())
@@ -550,7 +554,6 @@ impl Chat {
         tts: SharedTts,
         stopped_speaking: bool,
         commonmark_cache: &mut CommonMarkCache,
-        selected_model: String,
     ) {
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
@@ -567,7 +570,6 @@ impl Chat {
                         chatbox_panel_height >= max_height,
                         is_generating,
                         ollama,
-                        selected_model,
                     );
                 });
             });

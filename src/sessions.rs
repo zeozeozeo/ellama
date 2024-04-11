@@ -289,6 +289,13 @@ impl Sessions {
                     self.last_model_refresh = Instant::now();
                     if !self.model_picker.has_selection() {
                         self.model_picker.select_best_model(&self.models);
+
+                        // for each chat with unselected models, select the best model
+                        for chat in self.chats.iter_mut() {
+                            if !chat.model_picker.has_selection() {
+                                chat.model_picker.selected = self.model_picker.selected.clone();
+                            }
+                        }
                     }
                 }
                 Ok(OllamaResponse::ModelInfo { name, info }) => {

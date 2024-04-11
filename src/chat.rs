@@ -1,7 +1,7 @@
 use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets::ModelPicker};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
-    Pos2, Rect, Stroke,
+    Pos2, Rect, RichText, Stroke,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -101,6 +101,8 @@ impl Message {
         commonmark_cache: &mut CommonMarkCache,
         tts: SharedTts,
         idx: usize,
+        short_model_name: &str,
+        model_name: &str,
     ) -> bool {
         // message role
         let message_offset = ui
@@ -110,7 +112,14 @@ impl Message {
                     ui.label("You").rect.left() - f
                 } else {
                     let f = ui.label("🐱").rect.left();
-                    ui.label("Llama").rect.left() - f
+                    let offset = ui
+                        .label(short_model_name)
+                        .on_hover_text(model_name)
+                        .rect
+                        .left()
+                        - f;
+                    ui.add_enabled(false, egui::Label::new(model_name));
+                    offset
                 }
             })
             .inner;
@@ -535,7 +544,19 @@ impl Chat {
                     .ui_custom_layout(ui, self.messages.len(), |ui, index| {
                         let message = &mut self.messages[index];
                         let prev_speaking = message.is_speaking;
-                        if message.show(ui, commonmark_cache, tts.clone(), index) {
+                        let short_name = &self.model_picker.selected.short_name;
+                        if message.show(
+                            ui,
+                            commonmark_cache,
+                            tts.clone(),
+                            index,
+                            if short_name.is_empty() {
+                                "Llama"
+                            } else {
+                                short_name
+                            },
+                            &self.model_picker.selected.name,
+                        ) {
                             self.retry_message_idx = Some(index - 1);
                         }
                         if !prev_speaking && message.is_speaking {

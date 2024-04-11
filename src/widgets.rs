@@ -5,9 +5,19 @@ use ollama_rs::models::{LocalModel, ModelInfo};
 pub struct SelectedModel {
     pub name: String,
     #[serde(default)]
+    pub short_name: String,
+    #[serde(default)]
     modified_ago: String,
     modified_at: String,
     size: u64,
+}
+
+fn make_short_name(name: &str) -> String {
+    let mut c = name.chars().take_while(|c| c.is_alphanumeric());
+    match c.next() {
+        None => "Llama".to_string(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.collect::<String>().as_str(),
+    }
 }
 
 impl From<LocalModel> for SelectedModel {
@@ -16,6 +26,7 @@ impl From<LocalModel> for SelectedModel {
             .map(|time| timeago::Formatter::new().convert_chrono(time, chrono::Utc::now()))
             .unwrap_or_else(|e| e.to_string());
         Self {
+            short_name: make_short_name(&model.name),
             name: model.name,
             modified_ago: ago,
             modified_at: model.modified_at,

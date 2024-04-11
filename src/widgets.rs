@@ -56,7 +56,7 @@ impl ModelPicker {
             });
         }
 
-        if self.selected.name.is_empty() {
+        if !self.has_selection() {
             return;
         }
         ui.separator();
@@ -101,5 +101,20 @@ impl ModelPicker {
         if self.selected.name == name {
             self.info = Some(info.clone());
         }
+    }
+
+    pub fn select_best_model(&mut self, models: &[LocalModel]) {
+        models
+            .iter()
+            .max_by_key(|m| m.size)
+            .map(|m| self.selected = m.clone().into());
+        if self.has_selection() {
+            log::info!("subjectively selected best model: {}", self.selected.name);
+        }
+    }
+
+    #[inline]
+    pub fn has_selection(&self) -> bool {
+        !self.selected.name.is_empty()
     }
 }

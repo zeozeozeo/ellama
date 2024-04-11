@@ -287,6 +287,9 @@ impl Sessions {
                 Ok(OllamaResponse::Models(models)) => {
                     self.models = models;
                     self.last_model_refresh = Instant::now();
+                    if !self.model_picker.has_selection() {
+                        self.model_picker.select_best_model(&self.models);
+                    }
                 }
                 Ok(OllamaResponse::ModelInfo { name, info }) => {
                     self.pending_model_infos.remove(&name);

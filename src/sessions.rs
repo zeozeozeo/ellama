@@ -477,7 +477,6 @@ impl Sessions {
 
         ui.add_space(2.0);
 
-        // TODO: use show_rows() instead of show()
         let vlist = self.virtual_list.clone();
         egui::ScrollArea::vertical().show(ui, |ui| {
             vlist

@@ -23,3 +23,4 @@ timeago = { version = "0.4.2", default-features = false, features = ["chrono"] }
 chrono = "0.4"
 egui_virtual_list = "0.3.0"
 serde = { version = "1", features = ["derive"] }
+egui_dnd = "0.8.0"

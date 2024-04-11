@@ -12,6 +12,7 @@ use ollama_rs::{
     Ollama,
 };
 use std::{
+    hash::Hash,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -222,6 +223,13 @@ pub struct Chat {
     #[serde(skip)]
     virtual_list: VirtualList,
     pub model_picker: ModelPicker,
+    id: usize,
+}
+
+impl Hash for Chat {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
 }
 
 impl Default for Chat {
@@ -238,6 +246,7 @@ impl Default for Chat {
             stop_generating: Arc::new(AtomicBool::new(false)),
             virtual_list: VirtualList::new(),
             model_picker: ModelPicker::default(),
+            id: 0,
         }
     }
 }
@@ -305,6 +314,7 @@ impl Chat {
         Self {
             flower: CompletionFlower::new(id),
             model_picker,
+            id,
             ..Default::default()
         }
     }

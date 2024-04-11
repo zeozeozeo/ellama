@@ -1,14 +1,15 @@
 use crate::{chat::Chat, widgets::ModelPicker};
-use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
+use eframe::egui::{self, vec2, Color32, Frame, Layout, Response, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
 use egui_modal::{Icon, Modal};
+use egui_virtual_list::VirtualList;
 use flowync::{CompactFlower, CompactHandle};
 use ollama_rs::{
     models::{LocalModel, ModelInfo},
     Ollama,
 };
 use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc, time::Instant};
 use tts::Tts;
 
 #[derive(Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -63,14 +64,229 @@ impl From<LocalModel> for SelectedModel {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ChatsPanel {
+    chats: Rc<RefCell<Vec<Chat>>>,
+    selected_chat: usize,
+    chat_marked_for_deletion: usize,
+    remove_chat: Option<usize>,
+    model_picker: ModelPicker,
+    #[serde(skip)]
+    virtual_list: Rc<RefCell<VirtualList>>,
+}
+
+impl Default for ChatsPanel {
+    fn default() -> Self {
+        Self {
+            chats: Rc::new(RefCell::new(vec![Chat::default()])),
+            selected_chat: 0,
+            chat_marked_for_deletion: 0,
+            remove_chat: None,
+            model_picker: ModelPicker::default(),
+            virtual_list: Rc::new(RefCell::new(VirtualList::default())),
+        }
+    }
+}
+
+impl ChatsPanel {
+    #[inline]
+    fn add_default_chat(&self) {
+        // id 1 is already used, and we (probably) don't want to reuse ids for flowers
+        let mut chats = self.chats.borrow_mut();
+        let len = chats.len();
+        chats.push(Chat::new(len + 2, self.model_picker.clone()));
+    }
+
+    fn remove_chat(&mut self, idx: usize) {
+        let mut chats = self.chats.borrow_mut();
+        chats.remove(idx);
+        if chats.is_empty() {
+            self.add_default_chat();
+            self.selected_chat = 0;
+        } else if self.selected_chat >= chats.len() {
+            self.selected_chat = chats.len() - 1;
+        }
+    }
+
+    /// Returns whether any action with the chat frame should be ignored
+    fn show_chat_frame(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> bool {
+        let chats = self.chats.clone();
+        let chats = chats.borrow();
+        let Some(chat) = chats.get(idx) else {
+            return true;
+        };
+        let mut ignore_click = false;
+
+        let last_message = chat
+            .last_message_contents()
+            .unwrap_or_else(|| "No recent messages".to_string());
+
+        let summary = chat.summary.clone();
+
+        ui.horizontal(|ui| {
+            ui.add(if summary.is_empty() {
+                egui::Label::new("New Chat")
+                    .selectable(false)
+                    .truncate(true)
+            } else {
+                egui::Label::new(summary).selectable(false)
+            });
+            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(
+                        egui::Button::new("❌")
+                            .small()
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE),
+                    )
+                    .on_hover_text("Remove chat")
+                    .clicked()
+                {
+                    if ui.input(|i| i.modifiers.shift) {
+                        self.remove_chat = Some(idx);
+                    } else {
+                        self.chat_marked_for_deletion = idx;
+                        modal.open();
+                    }
+                    ignore_click = true;
+                }
+                if ui
+                    .add(
+                        egui::Button::new("Edit")
+                            .small()
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE),
+                    )
+                    .on_hover_text("Edit")
+                    .clicked()
+                {
+                    ignore_click = true;
+                    log::info!("edit");
+                }
+            });
+        });
+        ui.add_enabled(
+            false,
+            egui::Label::new(last_message)
+                .selectable(false)
+                .truncate(true),
+        );
+        ignore_click
+    }
+
+    fn show_chat_in_sidepanel(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> Response {
+        let mut ignore_click = false;
+        let resp = Frame::group(ui.style())
+            .rounding(Rounding::same(6.0))
+            .stroke(Stroke::new(2.0, ui.style().visuals.window_stroke.color))
+            .fill(if self.selected_chat == idx {
+                ui.style().visuals.faint_bg_color
+            } else {
+                ui.style().visuals.window_fill
+            })
+            .show(ui, |ui| {
+                ignore_click = self.show_chat_frame(ui, idx, modal);
+            })
+            .response;
+
+        // very hacky way to determine if the group has been clicked, for some reason
+        // egui doens't register clicked() events on it
+        let (primary_clicked, hovered) = ui.input(|i| {
+            (
+                i.pointer.primary_clicked(),
+                i.pointer
+                    .interact_pos()
+                    .map(|p| resp.rect.contains(p))
+                    .unwrap_or(false),
+            )
+        });
+
+        if hovered {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+
+        if !ignore_click && primary_clicked && hovered {
+            self.selected_chat = idx;
+        }
+        resp
+    }
+
+    fn show_chat(
+        &mut self,
+        ctx: &egui::Context,
+        ollama: &Ollama,
+        tts: SharedTts,
+        stopped_speaking: bool,
+        commonmark_cache: &mut CommonMarkCache,
+    ) {
+        self.chats.borrow_mut()[self.selected_chat].show(
+            ctx,
+            ollama,
+            tts,
+            stopped_speaking,
+            commonmark_cache,
+        );
+    }
+
+    fn show(&mut self, ui: &mut egui::Ui, modal: &Modal) {
+        ui.vertical_centered_justified(|ui| {
+            if ui
+                .add(egui::Button::new("➕ New Chat").min_size(vec2(0.0, 24.0)))
+                .on_hover_text("Create a new chat")
+                .clicked()
+            {
+                self.add_default_chat();
+                self.selected_chat = self.chats.borrow().len() - 1;
+            }
+        });
+
+        ui.add_space(2.0);
+
+        let chats = self.chats.clone();
+        let vlist = self.virtual_list.clone();
+        let response = egui_dnd::dnd(ui, "chats_panel_dnd").show_custom(|ui, iter| {
+            vlist
+                .borrow_mut()
+                .ui_custom_layout(ui, chats.borrow().len(), |ui, i| {
+                    iter.next(ui, egui::Id::new(i), i, true, |ui, item_handle| {
+                        item_handle.ui(ui, |ui, handle, state| {
+                            self.show_chat_in_sidepanel(ui, i, modal);
+                            ui.add_space(2.0);
+                        })
+                    });
+                    1
+                });
+        });
+        response.update_vec(&mut chats.borrow_mut());
+
+        if let Some(idx) = self.remove_chat.take() {
+            self.remove_chat(idx);
+        }
+
+        //egui::ScrollArea::vertical().show(ui, |ui| {
+        //    //let mut chats = self.chats.borrow_mut();
+        //        //self.virtual_chat_list
+        //        //    .ui_custom_layout(ui, chats.len(), |ui, i| {
+        //        //        self.show_chat_in_sidepanel(ui, i, &mut chats[i], modal)
+        //        //        ui.add_space(2.0);
+        //        //        1
+        //        //    });
+        //        //iter.next(ui, Id::new(*item), index, true, |ui, item_handle| {})
+        //    });
+        //    //egui_dnd::dnd(ui, "chats_list_dnd").show_vec(&mut chats, |ui, item, handle, state| {
+        //    //    if self.show_chat_in_sidepanel(ui, state.index, item, modal) {
+        //    //        self.selected_chat = state.index;
+        //    //    }
+        //    //    ui.add_space(2.0)
+        //    //});
+        //}))
+    }
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Sessions {
     tab: SessionTab,
-    chats: Vec<Chat>,
-    selected_chat: usize,
-    #[serde(skip)]
-    chat_marked_for_deletion: usize,
     #[serde(skip)]
     is_speaking: bool,
     #[serde(skip)]
@@ -89,8 +305,9 @@ pub struct Sessions {
     last_request_time: Instant,
     #[serde(skip)]
     is_auto_refresh: bool,
-    model_picker: ModelPicker,
+    #[serde(skip)]
     pending_model_infos: HashMap<String, ()>,
+    chats: ChatsPanel,
 }
 
 impl Default for Sessions {
@@ -98,9 +315,6 @@ impl Default for Sessions {
         let now = Instant::now();
         Self {
             tab: SessionTab::Chats,
-            chats: vec![Chat::default()],
-            selected_chat: 0,
-            chat_marked_for_deletion: 0,
             is_speaking: false,
             tts: Tts::default()
                 .map_err(|e| log::error!("failed to initialize TTS: {e}"))
@@ -113,8 +327,8 @@ impl Default for Sessions {
             last_model_refresh: now,
             last_request_time: now,
             is_auto_refresh: true,
-            model_picker: ModelPicker::default(),
             pending_model_infos: HashMap::new(),
+            chats: ChatsPanel::default(),
         }
     }
 }
@@ -209,7 +423,7 @@ impl Sessions {
             });
 
         // poll all flowers
-        for chat in self.chats.iter_mut() {
+        for chat in self.chats.chats.borrow_mut().iter_mut() {
             if chat.flower_active() {
                 request_repaint = true;
                 chat.poll_flower(&mut chat_modal);
@@ -224,11 +438,11 @@ impl Sessions {
             ctx.request_repaint();
         }
 
-        self.chats[self.selected_chat].show(
+        self.chats.show_chat(
             ctx,
             ollama,
             self.tts.clone(),
-            prev_is_speaking && !self.is_speaking, // stopped_talking
+            prev_is_speaking && !self.is_speaking, // stopped_speaking
             &mut self.commonmark_cache,
         );
     }
@@ -245,7 +459,7 @@ impl Sessions {
         match self.tab {
             SessionTab::Chats => {
                 let modal = Modal::new(ui.ctx(), "left_panel_chats_modal");
-                self.show_chats(ui, &modal);
+                self.chats.show(ui, &modal);
                 modal.show(|ui| {
                     modal.title(ui, "Remove Chat");
                     modal.frame(ui, |ui| {
@@ -262,7 +476,7 @@ impl Sessions {
                             }
                             if ui.button("Yes").clicked() {
                                 modal.close();
-                                self.remove_chat(self.chat_marked_for_deletion);
+                                self.chats.remove_chat(self.chats.chat_marked_for_deletion);
                             }
                         });
                     });
@@ -285,8 +499,8 @@ impl Sessions {
                 }
                 Ok(OllamaResponse::ModelInfo { name, info }) => {
                     self.pending_model_infos.remove(&name);
-                    self.model_picker.on_new_model_info(&name, &info);
-                    for chat in self.chats.iter_mut() {
+                    self.chats.model_picker.on_new_model_info(&name, &info);
+                    for chat in self.chats.chats.borrow_mut().iter_mut() {
                         chat.model_picker.on_new_model_info(&name, &info);
                     }
                 }
@@ -322,7 +536,7 @@ impl Sessions {
 
         let mut request_info_for: Option<String> = None;
         ui.label("Default model for new chats.");
-        self.model_picker.show(
+        self.chats.model_picker.show(
             ui,
             if loading_models {
                 None
@@ -339,147 +553,5 @@ impl Sessions {
         if let Some(name) = request_info_for {
             self.request_model_info(name, ollama.clone());
         }
-    }
-
-    #[inline]
-    fn add_default_chat(&mut self) {
-        // id 1 is already used, and we (probably) don't want to reuse ids for flowers
-        self.chats
-            .push(Chat::new(self.chats.len() + 2, self.model_picker.clone()));
-    }
-
-    fn remove_chat(&mut self, idx: usize) {
-        self.chats.remove(idx);
-        if self.chats.is_empty() {
-            self.add_default_chat();
-            self.selected_chat = 0;
-        } else if self.selected_chat >= self.chats.len() {
-            self.selected_chat = self.chats.len() - 1;
-        }
-    }
-
-    /// Returns whether any chat was removed
-    fn show_chat_frame(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> bool {
-        let Some(chat) = &self.chats.get(idx) else {
-            return false;
-        };
-        let mut ignore_click = false;
-
-        let last_message = chat
-            .last_message_contents()
-            .unwrap_or_else(|| "No recent messages".to_string());
-
-        let summary = chat.summary.clone();
-
-        ui.horizontal(|ui| {
-            ui.add(if summary.is_empty() {
-                egui::Label::new("New Chat")
-                    .selectable(false)
-                    .truncate(true)
-            } else {
-                egui::Label::new(summary).selectable(false)
-            });
-            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(
-                        egui::Button::new("❌")
-                            .small()
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE),
-                    )
-                    .on_hover_text("Remove chat")
-                    .clicked()
-                {
-                    if ui.input(|i| i.modifiers.shift) {
-                        self.remove_chat(idx);
-                    } else {
-                        self.chat_marked_for_deletion = idx;
-                        modal.open();
-                    }
-                    ignore_click = true;
-                }
-                if ui
-                    .add(
-                        egui::Button::new("Edit")
-                            .small()
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE),
-                    )
-                    .on_hover_text("Edit")
-                    .clicked()
-                {
-                    ignore_click = true;
-                    log::info!("edit");
-                }
-            });
-        });
-
-        ui.add_enabled(
-            false,
-            egui::Label::new(last_message)
-                .selectable(false)
-                .truncate(true),
-        );
-        ignore_click
-    }
-
-    /// Returns whether the chat should be selected as the current one
-    fn show_chat_in_sidepanel(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> bool {
-        let mut ignore_click = false;
-        let resp = Frame::group(ui.style())
-            .rounding(Rounding::same(6.0))
-            .stroke(Stroke::new(2.0, ui.style().visuals.window_stroke.color))
-            .fill(if self.selected_chat == idx {
-                ui.style().visuals.faint_bg_color
-            } else {
-                ui.style().visuals.window_fill
-            })
-            .show(ui, |ui| {
-                ignore_click = self.show_chat_frame(ui, idx, modal);
-            })
-            .response;
-
-        // very hacky way to determine if the group has been clicked, for some reason
-        // egui doens't register clicked() events on it
-        let (primary_clicked, hovered) = ui.input(|i| {
-            (
-                i.pointer.primary_clicked(),
-                i.pointer
-                    .interact_pos()
-                    .map(|p| resp.rect.contains(p))
-                    .unwrap_or(false),
-            )
-        });
-
-        if hovered {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-
-        !ignore_click && primary_clicked && hovered
-    }
-
-    fn show_chats(&mut self, ui: &mut egui::Ui, modal: &Modal) {
-        ui.vertical_centered_justified(|ui| {
-            if ui
-                .add(egui::Button::new("➕ New Chat").min_size(vec2(0.0, 24.0)))
-                .on_hover_text("Create a new chat")
-                .clicked()
-            {
-                self.add_default_chat();
-                self.selected_chat = self.chats.len() - 1;
-            }
-        });
-
-        ui.add_space(2.0);
-
-        // TODO: use show_rows() instead of show()
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for i in 0..self.chats.len() {
-                if self.show_chat_in_sidepanel(ui, i, modal) {
-                    self.selected_chat = i;
-                }
-                ui.add_space(2.0);
-            }
-        });
     }
 }

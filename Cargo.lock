@@ -911,6 +911,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "concat-idents"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f76990911f2267d837d9d0ad060aa63aaad170af40904b29461734c339030d4d"
+dependencies = [
+ "quote",
+ "syn 2.0.57",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1215,6 +1225,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_animation"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca4808a8068243c03715f0723d1050cbf5142fd37a5c9954555e5c46e6528384"
+dependencies = [
+ "egui",
+ "hello_egui_utils",
+ "simple-easing",
+]
+
+[[package]]
 name = "egui_commonmark"
 version = "0.15.0"
 source = "git+https://github.com/lampsitter/egui_commonmark.git#707401837f99479021574c5cdfca01e6e00b0a74"
@@ -1223,6 +1244,18 @@ dependencies = [
  "egui_extras",
  "pulldown-cmark",
  "syntect",
+]
+
+[[package]]
+name = "egui_dnd"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdb41ff845be314edbcc19f6b60072818ccd9b618e80959be77248d5e97cc26d"
+dependencies = [
+ "egui",
+ "egui_animation",
+ "simple-easing",
+ "web-time 1.1.0",
 ]
 
 [[package]]
@@ -1281,6 +1314,7 @@ dependencies = [
  "eframe",
  "egui-modal",
  "egui_commonmark",
+ "egui_dnd",
  "egui_virtual_list",
  "env_logger",
  "flowync",
@@ -1908,6 +1942,16 @@ dependencies = [
  "thiserror",
  "widestring",
  "winapi",
+]
+
+[[package]]
+name = "hello_egui_utils"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "859b60deb25f062a31770a730c1a46fd7051a9dbfe632eec11d4fce2693bb3c4"
+dependencies = [
+ "concat-idents",
+ "egui",
 ]
 
 [[package]]
@@ -3372,6 +3416,12 @@ name = "simd-adler32"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
+
+[[package]]
+name = "simple-easing"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "832ddd7df0d98d6fd93b973c330b7c8e0742d5cb8f1afc7dea89dba4d2531aa1"
 
 [[package]]
 name = "slab"

@@ -1,4 +1,5 @@
 use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets::ModelPicker};
+use anyhow::Result;
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
     Pos2, Rect, Stroke,
@@ -12,6 +13,7 @@ use ollama_rs::{
     Ollama,
 };
 use std::{
+    io::Write,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -22,13 +24,14 @@ use tokio_stream::StreamExt;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
-struct Message {
+pub struct Message {
     content: String,
     is_user: bool,
     #[serde(skip)]
     is_generating: bool,
     #[serde(skip)]
     requested_at: Instant,
+    time: chrono::DateTime<chrono::Utc>,
     #[serde(skip)]
     clicked_copy: bool,
     is_error: bool,
@@ -43,6 +46,7 @@ impl Default for Message {
             is_user: false,
             is_generating: false,
             requested_at: Instant::now(),
+            time: chrono::Utc::now(),
             clicked_copy: false,
             is_error: false,
             is_speaking: false,
@@ -210,6 +214,15 @@ impl Message {
 
         retry
     }
+
+    #[inline]
+    const fn role_str(&self) -> &str {
+        if self.is_user {
+            "User"
+        } else {
+            "Assistant"
+        }
+    }
 }
 
 // <completion progress, final completion, error>
@@ -312,25 +325,64 @@ async fn request_completion(
     Ok(())
 }
 
-#[derive(Debug, Default, Clone, Copy, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 pub enum ChatExportFormat {
     #[default]
     Plaintext,
 }
 
+impl ToString for ChatExportFormat {
+    fn to_string(&self) -> String {
+        format!("{self:?}")
+    }
+}
+
+impl ChatExportFormat {
+    pub const ALL: [Self; 1] = [Self::Plaintext];
+
+    #[inline]
+    pub const fn extensions(self) -> &'static [&'static str] {
+        match self {
+            ChatExportFormat::Plaintext => &["txt"],
+        }
+    }
+}
+
 pub async fn export_messages(
-    messages: Vec<ChatMessage>,
+    messages: Vec<Message>,
     format: ChatExportFormat,
     task: impl std::future::Future<Output = Option<rfd::FileHandle>>,
-) {
+) -> Result<()> {
     let Some(file) = task.await else {
         log::info!("export cancelled");
-        return;
+        anyhow::bail!("export cancelled");
     };
     log::info!(
         "exporting {} messages to {file:?} (format: {format:?})...",
         messages.len()
     );
+
+    let f = std::fs::File::create(file.path())?;
+    let mut f = std::io::BufWriter::new(f);
+
+    match format {
+        ChatExportFormat::Plaintext => {
+            for msg in messages {
+                writeln!(
+                    f,
+                    "{} - {}: {}",
+                    msg.time.to_rfc3339(),
+                    msg.role_str(),
+                    msg.content
+                )?;
+            }
+        }
+    }
+
+    f.flush()?;
+
+    log::info!("export complete");
+    Ok(())
 }
 
 impl Chat {

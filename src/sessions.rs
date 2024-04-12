@@ -99,6 +99,7 @@ pub struct Sessions {
     #[serde(skip)]
     virtual_list: Rc<RefCell<VirtualList>>,
     is_edit_modal: bool,
+    edited_chat: usize,
     chat_export_format: ChatExportFormat,
 }
 
@@ -126,6 +127,7 @@ impl Default for Sessions {
             pending_model_infos: HashMap::new(),
             virtual_list: Rc::new(RefCell::new(VirtualList::default())),
             is_edit_modal: false,
+            edited_chat: 0,
             chat_export_format: ChatExportFormat::default(),
         }
     }
@@ -316,13 +318,29 @@ impl Sessions {
                                 self.list_models(ollama.clone(), false);
                             }
                         });
-                    ui.collapsing("Save", |ui| {
+                    ui.collapsing("Export", |ui| {
+                        ui.label("Export chat history to a file.");
+                        let format = self.chat_export_format;
+                        egui::ComboBox::from_label("Export Format")
+                            .selected_text(format.to_string())
+                            .show_ui(ui, |ui| {
+                                for format in ChatExportFormat::ALL {
+                                    ui.selectable_value(
+                                        &mut self.chat_export_format,
+                                        format,
+                                        format.to_string(),
+                                    );
+                                }
+                            });
                         if ui.button("Save As...").clicked() {
-                            let task = rfd::AsyncFileDialog::new().save_file();
-                            let messages = self.chats[self.selected_chat].context_messages.clone();
-                            let format = self.chat_export_format;
+                            let task = rfd::AsyncFileDialog::new()
+                                .add_filter(format!("{format:?} file"), format.extensions())
+                                .save_file();
+                            let messages = self.chats[self.edited_chat].messages.clone();
                             tokio::spawn(async move {
-                                crate::chat::export_messages(messages, format, task).await;
+                                let _ = crate::chat::export_messages(messages, format, task)
+                                    .await
+                                    .map_err(|e| log::error!("failed to export messages: {e}"));
                             });
                         }
                     });
@@ -524,6 +542,7 @@ impl Sessions {
                     .clicked()
                 {
                     (ignore_click, self.is_edit_modal) = (true, true);
+                    self.edited_chat = idx;
                     modal.open();
                 }
             });

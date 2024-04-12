@@ -1,7 +1,10 @@
-use crate::{chat::Chat, widgets::ModelPicker};
+use crate::{
+    chat::{Chat, ChatExportFormat},
+    widgets::{ModelPicker, RequestInfoType},
+};
 use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
-use egui_modal::{Icon, Modal};
+use egui_modal::{Icon, Modal, ModalStyle};
 use egui_virtual_list::VirtualList;
 use flowync::{CompactFlower, CompactHandle};
 use ollama_rs::{
@@ -95,6 +98,8 @@ pub struct Sessions {
     pending_model_infos: HashMap<String, ()>,
     #[serde(skip)]
     virtual_list: Rc<RefCell<VirtualList>>,
+    is_edit_modal: bool,
+    chat_export_format: ChatExportFormat,
 }
 
 impl Default for Sessions {
@@ -120,6 +125,8 @@ impl Default for Sessions {
             model_picker: ModelPicker::default(),
             pending_model_infos: HashMap::new(),
             virtual_list: Rc::new(RefCell::new(VirtualList::default())),
+            is_edit_modal: false,
+            chat_export_format: ChatExportFormat::default(),
         }
     }
 }
@@ -238,6 +245,92 @@ impl Sessions {
         );
     }
 
+    fn show_remove_chat_modal_inner(&mut self, ui: &mut egui::Ui, modal: &Modal) {
+        modal.title(ui, "Remove Chat");
+        modal.frame(ui, |ui| {
+            modal.body_and_icon(
+                ui,
+                "Do you really want to remove this chat? \
+                You cannot undo this action later.\n\
+                Hold Shift to surpass this warning.",
+                Icon::Warning,
+            );
+            modal.buttons(ui, |ui| {
+                if modal.button(ui, "No").clicked() {
+                    modal.close();
+                }
+                let summary = self
+                    .chats
+                    .get(self.chat_marked_for_deletion)
+                    .map(|c| {
+                        if c.summary.is_empty() {
+                            "New Chat"
+                        } else {
+                            c.summary.as_str()
+                        }
+                    })
+                    .unwrap_or("New Chat");
+                if modal
+                    .caution_button(ui, "Yes")
+                    .on_hover_text(format!("Remove chat \"{summary}\"",))
+                    .clicked()
+                {
+                    modal.close();
+                    self.remove_chat(self.chat_marked_for_deletion);
+                }
+            });
+        });
+    }
+
+    fn show_edit_modal_inner(&mut self, ui: &mut egui::Ui, modal: &Modal, ollama: &Ollama) {
+        modal.frame(ui, |ui| {
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::CollapsingHeader::new("Model")
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            let mut request_info_for: Option<String> = None;
+                            let mut list_models = false;
+                            self.model_picker.show(
+                                ui,
+                                if self.is_loading_models() {
+                                    None
+                                } else {
+                                    Some(&self.models)
+                                },
+                                |typ| match typ {
+                                    RequestInfoType::ModelInfo(name) => {
+                                        if !self.pending_model_infos.contains_key(name) {
+                                            request_info_for = Some(name.to_string());
+                                        }
+                                    }
+                                    RequestInfoType::Models => {
+                                        list_models = true;
+                                    }
+                                },
+                            );
+                            if let Some(name) = request_info_for {
+                                self.request_model_info(name, ollama.clone());
+                            }
+                            if list_models {
+                                self.list_models(ollama.clone(), false);
+                            }
+                        });
+                    ui.collapsing("Save", |ui| {
+                        if ui.button("Save As...").clicked() {
+                            let task = rfd::AsyncFileDialog::new().save_file();
+                            let messages = self.chats[self.selected_chat].context_messages.clone();
+                            let format = self.chat_export_format;
+                            tokio::spawn(async move {
+                                crate::chat::export_messages(messages, format, task).await;
+                            });
+                        }
+                    });
+                });
+            });
+        });
+    }
+
     fn show_left_panel(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
         ui.add_space(ui.style().spacing.window_margin.top);
         ui.horizontal(|ui| {
@@ -249,28 +342,23 @@ impl Sessions {
 
         match self.tab {
             SessionTab::Chats => {
-                let modal = Modal::new(ui.ctx(), "left_panel_chats_modal");
+                let mut modal = Modal::new(ui.ctx(), "left_panel_chats_modal")
+                    .with_close_on_outside_click(true);
+
                 self.show_chats(ui, &modal);
+                if self.is_edit_modal {
+                    modal = modal.with_style(&ModalStyle {
+                        window_title: Some("Edit Chat".to_string()),
+                        ..Default::default()
+                    })
+                }
+
                 modal.show(|ui| {
-                    modal.title(ui, "Remove Chat");
-                    modal.frame(ui, |ui| {
-                        modal.body_and_icon(
-                            ui,
-                            "Do you really want to remove this chat? \
-                            You cannot undo this action later.\n\
-                            Hold Shift to surpass this warning.",
-                            Icon::Warning,
-                        );
-                        modal.buttons(ui, |ui| {
-                            if ui.button("No").clicked() {
-                                modal.close();
-                            }
-                            if ui.button("Yes").clicked() {
-                                modal.close();
-                                self.remove_chat(self.chat_marked_for_deletion);
-                            }
-                        });
-                    });
+                    if self.is_edit_modal {
+                        self.show_edit_modal_inner(ui, &modal, ollama);
+                    } else {
+                        self.show_remove_chat_modal_inner(ui, &modal);
+                    }
                 });
             }
             SessionTab::Model => {
@@ -329,30 +417,41 @@ impl Sessions {
         });
     }
 
-    fn show_model_tab(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
-        let active = self.flower.is_active();
-        let loading_models = active
+    #[inline]
+    fn is_loading_models(&self) -> bool {
+        self.flower.is_active()
             && self.flower_activity == OllamaFlowerActivity::ListModels
-            && !self.is_auto_refresh;
+            && !self.is_auto_refresh
+    }
 
+    fn show_model_tab(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
         let mut request_info_for: Option<String> = None;
+        let mut list_models = false;
         ui.label("Default model for new chats.");
         self.model_picker.show(
             ui,
-            if loading_models {
+            if self.is_loading_models() {
                 None
             } else {
                 Some(&self.models)
             },
-            |name| {
-                if !self.pending_model_infos.contains_key(name) {
-                    request_info_for = Some(name.to_string());
+            |typ| match typ {
+                RequestInfoType::ModelInfo(name) => {
+                    if !self.pending_model_infos.contains_key(name) {
+                        request_info_for = Some(name.to_string());
+                    }
+                }
+                RequestInfoType::Models => {
+                    list_models = true;
                 }
             },
         );
 
         if let Some(name) = request_info_for {
             self.request_model_info(name, ollama.clone());
+        }
+        if list_models {
+            self.list_models(ollama.clone(), false);
         }
     }
 
@@ -409,6 +508,7 @@ impl Sessions {
                         self.remove_chat(idx);
                     } else {
                         self.chat_marked_for_deletion = idx;
+                        self.is_edit_modal = false;
                         modal.open();
                     }
                     ignore_click = true;
@@ -423,8 +523,8 @@ impl Sessions {
                     .on_hover_text("Edit")
                     .clicked()
                 {
-                    ignore_click = true;
-                    log::info!("edit");
+                    (ignore_click, self.is_edit_modal) = (true, true);
+                    modal.open();
                 }
             });
         });
@@ -456,15 +556,19 @@ impl Sessions {
 
         // very hacky way to determine if the group has been clicked, for some reason
         // egui doens't register clicked() events on it
-        let (primary_clicked, hovered) = ui.input(|i| {
-            (
-                i.pointer.primary_clicked(),
-                i.pointer
-                    .interact_pos()
-                    .map(|p| resp.rect.contains(p))
-                    .unwrap_or(false),
-            )
-        });
+        let (primary_clicked, hovered) = if modal.is_open() {
+            (false, false)
+        } else {
+            ui.input(|i| {
+                (
+                    i.pointer.primary_clicked(),
+                    i.pointer
+                        .interact_pos()
+                        .map(|p| resp.rect.contains(p))
+                        .unwrap_or(false),
+                )
+            })
+        };
 
         if hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

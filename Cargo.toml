@@ -15,7 +15,7 @@ log = "0.4.21"
 ollama-rs = { git = "https://github.com/pepperoni21/ollama-rs.git", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
-egui-modal = "0.3.6"
+egui-modal = { git = "https://github.com/zeozeozeo/egui-modal.git", branch = "modal-window-title" }
 tts = "0.26.0"
 parking_lot = "0.12.1"
 bytesize = "1.3.0"
@@ -23,3 +23,4 @@ timeago = { version = "0.4.2", default-features = false, features = ["chrono"] }
 chrono = "0.4"
 egui_virtual_list = "0.3.0"
 serde = { version = "1", features = ["derive"] }
+rfd = { version = "0.14", default-features = false, features = ["tokio", "xdg-portal"] }

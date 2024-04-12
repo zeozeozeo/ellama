@@ -1,4 +1,4 @@
-use eframe::egui;
+use eframe::egui::{self, Color32};
 use ollama_rs::models::{LocalModel, ModelInfo};
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
@@ -12,6 +12,13 @@ pub struct SelectedModel {
     size: u64,
 }
 
+/// Convert a model name into a short name.
+///
+/// # Example
+///
+/// - nous-hermes2:latest -> Nous
+/// - gemma:latest -> Gemma
+/// - starling-lm:7b-beta-q5_K_M -> Starling
 fn make_short_name(name: &str) -> String {
     let mut c = name.chars().take_while(|c| c.is_alphanumeric());
     match c.next() {
@@ -41,25 +48,48 @@ pub struct ModelPicker {
     pub info: Option<ModelInfo>,
 }
 
+pub enum RequestInfoType<'a> {
+    Models,
+    ModelInfo(&'a str),
+}
+
 impl ModelPicker {
-    pub fn show<R>(&mut self, ui: &mut egui::Ui, models: Option<&[LocalModel]>, request_info: R)
+    pub fn show<R>(&mut self, ui: &mut egui::Ui, models: Option<&[LocalModel]>, mut request_info: R)
     where
-        R: FnOnce(&str),
+        R: FnMut(RequestInfoType),
     {
         if let Some(models) = models {
-            egui::ComboBox::from_id_source("model_selector_combobox")
-                .selected_text(&self.selected.name)
-                .show_ui(ui, |ui| {
-                    for model in models {
-                        if ui
-                            .selectable_label(self.selected.name == model.name, &model.name)
-                            .clicked()
-                        {
-                            self.selected = model.clone().into();
-                            self.info = None;
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_source("model_selector_combobox")
+                    .selected_text(&self.selected.name)
+                    .show_ui(ui, |ui| {
+                        for model in models {
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .selectable_label(self.selected.name == model.name, &model.name)
+                                    .clicked()
+                                {
+                                    self.selected = model.clone().into();
+                                    self.info = None;
+                                }
+                                // TODO: make this stick to the right
+                                ui.add_enabled(
+                                    false,
+                                    egui::Label::new(format!("{}", bytesize::ByteSize(model.size))),
+                                );
+                            });
                         }
-                    }
-                });
+                        if models.is_empty() {
+                            ui.label("No models found, is the server running?");
+                        }
+                    });
+                if ui
+                    .add(egui::Button::new("⟳").small().fill(Color32::TRANSPARENT))
+                    .clicked()
+                {
+                    request_info(RequestInfoType::Models);
+                }
+            });
         } else {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
@@ -100,7 +130,7 @@ impl ModelPicker {
                 }
             }
         } else {
-            request_info(&self.selected.name);
+            request_info(RequestInfoType::ModelInfo(&self.selected.name));
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
                 ui.label("Loading model info…");

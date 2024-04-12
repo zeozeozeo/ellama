@@ -1,7 +1,7 @@
 use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets::ModelPicker};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
-    Pos2, Rect, RichText, Stroke,
+    Pos2, Rect, Stroke,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -173,7 +173,11 @@ impl Message {
                             .small()
                             .fill(egui::Color32::TRANSPARENT),
                     )
-                    .on_hover_text("Copy message");
+                    .on_hover_text(if self.clicked_copy {
+                        "Copied!"
+                    } else {
+                        "Copy message"
+                    });
                 if copy.clicked() {
                     ui.ctx().copy_text(self.content.clone());
                     self.clicked_copy = true;
@@ -218,8 +222,8 @@ pub struct Chat {
     chatbox: String,
     #[serde(skip)]
     chatbox_height: f32,
-    messages: Vec<Message>,
-    context_messages: Vec<ChatMessage>,
+    pub messages: Vec<Message>,
+    pub context_messages: Vec<ChatMessage>,
     #[serde(skip)]
     flower: CompletionFlower,
     #[serde(skip)]
@@ -306,6 +310,27 @@ async fn request_completion(
         handle.success(response.trim().to_string());
     }
     Ok(())
+}
+
+#[derive(Debug, Default, Clone, Copy, serde::Deserialize, serde::Serialize)]
+pub enum ChatExportFormat {
+    #[default]
+    Plaintext,
+}
+
+pub async fn export_messages(
+    messages: Vec<ChatMessage>,
+    format: ChatExportFormat,
+    task: impl std::future::Future<Output = Option<rfd::FileHandle>>,
+) {
+    let Some(file) = task.await else {
+        log::info!("export cancelled");
+        return;
+    };
+    log::info!(
+        "exporting {} messages to {file:?} (format: {format:?})...",
+        messages.len()
+    );
 }
 
 impl Chat {

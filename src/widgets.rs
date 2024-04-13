@@ -173,10 +173,33 @@ impl ModelPicker {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+enum Mirostat {
+    Disabled,
+    Mirostat,
+    Mirostat2,
+}
+
+impl Mirostat {
+    #[inline]
+    const fn to_u8(self) -> u8 {
+        self as u8
+    }
+
+    #[inline]
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Disabled => "Disabled",
+            Self::Mirostat => "Mirostat",
+            Self::Mirostat2 => "Mirostat 2.0",
+        }
+    }
+}
+
 #[derive(Default, Clone, serde::Deserialize, serde::Serialize)]
 struct ModelSettings {
     /// Enable Mirostat sampling for controlling perplexity. (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0)
-    pub mirostat: Option<u8>,
+    pub mirostat: Option<Mirostat>,
     /// Influences how quickly the algorithm responds to feedback from the generated text. A lower learning rate will result in slower adjustments, while a higher learning rate will make the algorithm more responsive. (Default: 0.1)
     pub mirostat_eta: Option<f32>,
     /// Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text. (Default: 5.0)
@@ -213,7 +236,7 @@ impl From<ModelSettings> for GenerationOptions {
     fn from(value: ModelSettings) -> Self {
         let mut s = Self::default();
         if let Some(mirostat) = value.mirostat {
-            s = s.mirostat(mirostat);
+            s = s.mirostat(mirostat.to_u8());
         }
         if let Some(mirostat_eta) = value.mirostat_eta {
             s = s.mirostat_eta(mirostat_eta);
@@ -318,16 +341,44 @@ impl ModelSettings {
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
-        Self::edit_numeric(
-            ui,
-            &mut self.mirostat,
-            0,
-            1.0,
-            "Microstat",
-            "Enable Mirostat sampling for controlling perplexity.",
-        );
-        Self::edit_numeric(ui, &mut self.mirostat_eta, 0.1, 0.01, "Microstat eta", "Influences how quickly the algorithm responds to feedback from the generated text. A lower learning rate will result in slower adjustments, while a higher learning rate will make the algorithm more responsive.");
-        Self::edit_numeric(ui, &mut self.mirostat_tau, 5.0, 0.01, "Microstat tau", "Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text.");
+        ui.collapsing("Mirostat", |ui| {
+            ui.label("Enable Mirostat sampling for controlling perplexity. (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0)");
+            
+            let mut enabled = self.mirostat.is_some();
+            ui.checkbox(&mut enabled, "Enable");
+            if !enabled {
+                self.mirostat = None;
+            } else if self.mirostat.is_none() {
+                self.mirostat = Some(Mirostat::Disabled);
+            }
+
+            ui.add_enabled_ui(self.mirostat.is_some(), |ui| {
+                if let Some(mirostat) = self.mirostat {
+                    egui::ComboBox::new("mirostat_combobox", "Mirostat")
+                        .selected_text(mirostat.name())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.mirostat,
+                                Some(Mirostat::Disabled),
+                                "Disabled",
+                            );
+                            ui.selectable_value(
+                                &mut self.mirostat,
+                                Some(Mirostat::Mirostat),
+                                "Mirostat",
+                            );
+                            ui.selectable_value(
+                                &mut self.mirostat,
+                                Some(Mirostat::Mirostat2),
+                                "Mirostat 2.0",
+                            );
+                        });
+                }
+            });
+        });
+
+        Self::edit_numeric(ui, &mut self.mirostat_eta, 0.1, 0.01, "Mirostat eta", "Influences how quickly the algorithm responds to feedback from the generated text. A lower learning rate will result in slower adjustments, while a higher learning rate will make the algorithm more responsive.");
+        Self::edit_numeric(ui, &mut self.mirostat_tau, 5.0, 0.01, "Mirostat tau", "Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text.");
         Self::edit_numeric(
             ui,
             &mut self.num_ctx,

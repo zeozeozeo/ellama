@@ -1228,7 +1228,7 @@ dependencies = [
 [[package]]
 name = "egui-modal"
 version = "0.3.6"
-source = "git+https://github.com/zeozeozeo/egui-modal.git?branch=modal-window-title#574fbd91170616036a5f629722e1de2cc4caec4f"
+source = "git+https://github.com/zeozeozeo/egui-modal.git?branch=forget-state#2eeb7479d1c3a60cd87492aefad1377fe122d215"
 dependencies = [
  "egui",
 ]
@@ -1345,6 +1345,7 @@ dependencies = [
  "parking_lot",
  "rfd",
  "serde",
+ "serde_json",
  "timeago",
  "tokio",
  "tokio-stream",

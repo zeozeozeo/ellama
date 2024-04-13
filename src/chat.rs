@@ -22,11 +22,17 @@ use std::{
 };
 use tokio_stream::StreamExt;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+enum Role {
+    User,
+    Assistant,
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Message {
     content: String,
-    is_user: bool,
+    role: Role,
     #[serde(skip)]
     is_generating: bool,
     #[serde(skip)]
@@ -43,7 +49,7 @@ impl Default for Message {
     fn default() -> Self {
         Self {
             content: String::new(),
-            is_user: false,
+            role: Role::User,
             is_generating: false,
             requested_at: Instant::now(),
             time: chrono::Utc::now(),
@@ -83,7 +89,7 @@ impl Message {
     fn user(content: String) -> Self {
         Self {
             content,
-            is_user: true,
+            role: Role::User,
             is_generating: false,
             ..Default::default()
         }
@@ -93,10 +99,15 @@ impl Message {
     fn assistant(content: String) -> Self {
         Self {
             content,
-            is_user: false,
+            role: Role::Assistant,
             is_generating: true,
             ..Default::default()
         }
+    }
+
+    #[inline]
+    const fn is_user(&self) -> bool {
+        matches!(self.role, Role::User)
     }
 
     fn show(
@@ -111,7 +122,7 @@ impl Message {
         // message role
         let message_offset = ui
             .horizontal(|ui| {
-                if self.is_user {
+                if self.is_user() {
                     let f = ui.label("👤").rect.left();
                     ui.label("You").rect.left() - f
                 } else {
@@ -167,7 +178,7 @@ impl Message {
         });
 
         // copy buttons and such
-        if !self.is_generating && !self.content.is_empty() && !self.is_user && !self.is_error {
+        if !self.is_generating && !self.content.is_empty() && !self.is_user() && !self.is_error {
             ui.add_space(-12.0);
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
@@ -213,15 +224,6 @@ impl Message {
         }
 
         retry
-    }
-
-    #[inline]
-    const fn role_str(&self) -> &str {
-        if self.is_user {
-            "User"
-        } else {
-            "Assistant"
-        }
     }
 }
 
@@ -329,6 +331,7 @@ async fn request_completion(
 pub enum ChatExportFormat {
     #[default]
     Plaintext,
+    Json,
 }
 
 impl ToString for ChatExportFormat {
@@ -338,12 +341,13 @@ impl ToString for ChatExportFormat {
 }
 
 impl ChatExportFormat {
-    pub const ALL: [Self; 1] = [Self::Plaintext];
+    pub const ALL: [Self; 2] = [Self::Plaintext, Self::Json];
 
     #[inline]
     pub const fn extensions(self) -> &'static [&'static str] {
         match self {
             ChatExportFormat::Plaintext => &["txt"],
+            ChatExportFormat::Json => &["json"],
         }
     }
 }
@@ -370,12 +374,15 @@ pub async fn export_messages(
             for msg in messages {
                 writeln!(
                     f,
-                    "{} - {}: {}",
+                    "{} - {:?}: {}",
                     msg.time.to_rfc3339(),
-                    msg.role_str(),
+                    msg.role,
                     msg.content
                 )?;
             }
+        }
+        ChatExportFormat::Json => {
+            serde_json::to_writer_pretty(&mut f, &messages)?;
         }
     }
 
@@ -541,7 +548,7 @@ impl Chat {
                         Compact::Panicked(e) => format!("Tokio task panicked: {e}"),
                         Compact::Suppose(e) => e,
                     };
-                    // message.content = msg.clone();
+                    message.content = msg.clone();
                     message.is_error = true;
                     modal
                         .dialog()
@@ -559,7 +566,7 @@ impl Chat {
             if message.content.is_empty() {
                 continue;
             }
-            return Some(if message.is_user {
+            return Some(if message.is_user() {
                 format!("You: {}", message.content)
             } else {
                 message.content.to_string()

@@ -62,9 +62,7 @@ impl Ellama {
         if let Some(storage) = cc.storage {
             if let Some(mut app_state) = eframe::get_value::<Self>(storage, eframe::APP_KEY) {
                 log::debug!("app state successfully restored from storage");
-                app_state
-                    .sessions
-                    .list_models(app_state.ollama.clone(), true);
+                app_state.sessions.list_models(app_state.ollama.clone());
                 return app_state;
             }
         }

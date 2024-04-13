@@ -40,9 +40,9 @@ enum OllamaFlowerActivity {
     ModelInfo,
 }
 
-// <progress, response, (error, autorefresh)>
-type OllamaFlower = CompactFlower<(), OllamaResponse, (String, bool)>;
-type OllamaFlowerHandle = CompactHandle<(), OllamaResponse, (String, bool)>;
+// <progress, response, error>
+type OllamaFlower = CompactFlower<(), OllamaResponse, String>;
+type OllamaFlowerHandle = CompactHandle<(), OllamaResponse, String>;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct SelectedModel {
@@ -88,11 +88,7 @@ pub struct Sessions {
     #[serde(skip)]
     flower_activity: OllamaFlowerActivity,
     #[serde(skip)]
-    last_model_refresh: Instant,
-    #[serde(skip)]
     last_request_time: Instant,
-    #[serde(skip)]
-    is_auto_refresh: bool,
     model_picker: ModelPicker,
     #[serde(skip)]
     pending_model_infos: HashMap<String, ()>,
@@ -120,9 +116,7 @@ impl Default for Sessions {
             flower: OllamaFlower::new(1),
             models: Vec::new(),
             flower_activity: OllamaFlowerActivity::default(),
-            last_model_refresh: now,
             last_request_time: now,
-            is_auto_refresh: true,
             model_picker: ModelPicker::default(),
             pending_model_infos: HashMap::new(),
             virtual_list: Rc::new(RefCell::new(VirtualList::default())),
@@ -133,16 +127,16 @@ impl Default for Sessions {
     }
 }
 
-async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle, is_auto_refresh: bool) {
-    log::debug!("requesting local models... (auto-refresh: {is_auto_refresh})");
+async fn list_local_models(ollama: Ollama, handle: &OllamaFlowerHandle) {
+    log::debug!("requesting local models...");
     match ollama.list_local_models().await {
         Ok(models) => {
             log::debug!("{} local models: {models:?}", models.len());
             handle.success(OllamaResponse::Models(models));
         }
         Err(e) => {
-            log::error!("failed to list local models: {e} (auto-refresh: {is_auto_refresh})");
-            handle.error((e.to_string(), is_auto_refresh));
+            log::error!("failed to list local models: {e}");
+            handle.error(e.to_string());
         }
     }
 }
@@ -158,7 +152,7 @@ async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaF
         }
         Err(e) => {
             log::error!("failed to request model `{model_name}` info: {e}");
-            handle.error((e.to_string(), false));
+            handle.error(e.to_string());
         }
     }
 }
@@ -166,19 +160,17 @@ async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaF
 impl Sessions {
     pub fn new(ollama: Ollama) -> Self {
         let mut sessions = Self::default();
-        sessions.list_models(ollama, false);
+        sessions.list_models(ollama);
         sessions
     }
 
-    pub fn list_models(&mut self, ollama: Ollama, is_auto_refresh: bool) {
+    pub fn list_models(&mut self, ollama: Ollama) {
         let handle = self.flower.handle();
         self.flower_activity = OllamaFlowerActivity::ListModels;
-        self.is_auto_refresh = is_auto_refresh;
         self.last_request_time = Instant::now();
-        self.last_model_refresh = self.last_request_time;
         tokio::spawn(async move {
             handle.activate();
-            list_local_models(ollama, &handle, is_auto_refresh).await;
+            list_local_models(ollama, &handle).await;
         });
     }
 
@@ -207,18 +199,39 @@ impl Sessions {
 
         let mut modal = Modal::new(ctx, "sessions_main_modal");
         let mut chat_modal = Modal::new(ctx, "chat_main_modal").with_close_on_outside_click(true);
+        let mut left_panel_modal =
+            Modal::new(ctx, "left_panel_chats_modal").with_close_on_outside_click(true);
+
+        if self.is_edit_modal {
+            left_panel_modal = left_panel_modal.with_style(&ModalStyle {
+                window_title: Some("Edit Chat".to_string()),
+                default_height: Some(10.0), // ¯\_(ツ)_/¯
+                ..Default::default()
+            })
+        }
+
+        left_panel_modal.show(|ui| {
+            if self.is_edit_modal {
+                self.show_edit_modal_inner(ui, &left_panel_modal, ollama);
+            } else {
+                self.show_remove_chat_modal_inner(ui, &left_panel_modal);
+            }
+        });
 
         // show dialogs created on the previous frame, if we move this into the end of the function
         // it won't be located in the center of the window but in the center of the centralpanel instead
-        modal.show_dialog();
+        if modal.is_open() || chat_modal.is_open() {
+            left_panel_modal.close();
+        }
         chat_modal.show_dialog();
+        modal.show_dialog();
 
         let avail_width = ctx.available_rect().width();
         egui::SidePanel::left("sessions_panel")
             .resizable(true)
             .max_width(avail_width * 0.5)
             .show(ctx, |ui| {
-                self.show_left_panel(ui, ollama);
+                self.show_left_panel(ui, ollama, &left_panel_modal);
                 ui.allocate_space(ui.available_size());
             });
 
@@ -284,72 +297,76 @@ impl Sessions {
         });
     }
 
+    fn show_edit_modal_scrollarea(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
+        egui::CollapsingHeader::new("Model")
+            .default_open(true)
+            .show(ui, |ui| {
+                let mut request_info_for: Option<String> = None;
+                let mut list_models = false;
+                self.model_picker.show(
+                    ui,
+                    if self.is_loading_models() {
+                        None
+                    } else {
+                        Some(&self.models)
+                    },
+                    |typ| match typ {
+                        RequestInfoType::ModelInfo(name) => {
+                            if !self.pending_model_infos.contains_key(name) {
+                                request_info_for = Some(name.to_string());
+                            }
+                        }
+                        RequestInfoType::Models => {
+                            list_models = true;
+                        }
+                    },
+                );
+                if let Some(name) = request_info_for {
+                    self.request_model_info(name, ollama.clone());
+                }
+                if list_models {
+                    self.list_models(ollama.clone());
+                }
+            });
+        ui.collapsing("Export", |ui| {
+            ui.label("Export chat history to a file.");
+            let format = self.chat_export_format;
+            egui::ComboBox::from_label("Export Format")
+                .selected_text(format.to_string())
+                .show_ui(ui, |ui| {
+                    for format in ChatExportFormat::ALL {
+                        ui.selectable_value(
+                            &mut self.chat_export_format,
+                            format,
+                            format.to_string(),
+                        );
+                    }
+                });
+            if ui.button("Save As...").clicked() {
+                let task = rfd::AsyncFileDialog::new()
+                    .add_filter(format!("{format:?} file"), format.extensions())
+                    .save_file();
+                let messages = self.chats[self.edited_chat].messages.clone();
+                tokio::spawn(async move {
+                    let _ = crate::chat::export_messages(messages, format, task)
+                        .await
+                        .map_err(|e| log::error!("failed to export messages: {e}"));
+                });
+            }
+        });
+    }
+
     fn show_edit_modal_inner(&mut self, ui: &mut egui::Ui, modal: &Modal, ollama: &Ollama) {
         modal.frame(ui, |ui| {
-            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::CollapsingHeader::new("Model")
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            let mut request_info_for: Option<String> = None;
-                            let mut list_models = false;
-                            self.model_picker.show(
-                                ui,
-                                if self.is_loading_models() {
-                                    None
-                                } else {
-                                    Some(&self.models)
-                                },
-                                |typ| match typ {
-                                    RequestInfoType::ModelInfo(name) => {
-                                        if !self.pending_model_infos.contains_key(name) {
-                                            request_info_for = Some(name.to_string());
-                                        }
-                                    }
-                                    RequestInfoType::Models => {
-                                        list_models = true;
-                                    }
-                                },
-                            );
-                            if let Some(name) = request_info_for {
-                                self.request_model_info(name, ollama.clone());
-                            }
-                            if list_models {
-                                self.list_models(ollama.clone(), false);
-                            }
-                        });
-                    ui.collapsing("Export", |ui| {
-                        ui.label("Export chat history to a file.");
-                        let format = self.chat_export_format;
-                        egui::ComboBox::from_label("Export Format")
-                            .selected_text(format.to_string())
-                            .show_ui(ui, |ui| {
-                                for format in ChatExportFormat::ALL {
-                                    ui.selectable_value(
-                                        &mut self.chat_export_format,
-                                        format,
-                                        format.to_string(),
-                                    );
-                                }
-                            });
-                        if ui.button("Save As...").clicked() {
-                            let task = rfd::AsyncFileDialog::new()
-                                .add_filter(format!("{format:?} file"), format.extensions())
-                                .save_file();
-                            let messages = self.chats[self.edited_chat].messages.clone();
-                            tokio::spawn(async move {
-                                let _ = crate::chat::export_messages(messages, format, task)
-                                    .await
-                                    .map_err(|e| log::error!("failed to export messages: {e}"));
-                            });
-                        }
-                    });
+                    self.show_edit_modal_scrollarea(ui, ollama);
                 });
             });
         });
     }
 
-    fn show_left_panel(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
+    fn show_left_panel(&mut self, ui: &mut egui::Ui, ollama: &Ollama, modal: &Modal) {
         ui.add_space(ui.style().spacing.window_margin.top);
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, SessionTab::Chats, "Chats");
@@ -360,24 +377,7 @@ impl Sessions {
 
         match self.tab {
             SessionTab::Chats => {
-                let mut modal = Modal::new(ui.ctx(), "left_panel_chats_modal")
-                    .with_close_on_outside_click(true);
-
                 self.show_chats(ui, &modal);
-                if self.is_edit_modal {
-                    modal = modal.with_style(&ModalStyle {
-                        window_title: Some("Edit Chat".to_string()),
-                        ..Default::default()
-                    })
-                }
-
-                modal.show(|ui| {
-                    if self.is_edit_modal {
-                        self.show_edit_modal_inner(ui, &modal, ollama);
-                    } else {
-                        self.show_remove_chat_modal_inner(ui, &modal);
-                    }
-                });
             }
             SessionTab::Model => {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -392,7 +392,6 @@ impl Sessions {
             match resp {
                 Ok(OllamaResponse::Models(models)) => {
                     self.models = models;
-                    self.last_model_refresh = Instant::now();
                     if !self.model_picker.has_selection() {
                         self.model_picker.select_best_model(&self.models);
 
@@ -411,15 +410,13 @@ impl Sessions {
                         chat.model_picker.on_new_model_info(&name, &info);
                     }
                 }
-                Err(flowync::error::Compact::Suppose((e, is_auto_refresh))) => {
-                    if !is_auto_refresh {
-                        modal
-                            .dialog()
-                            .with_icon(Icon::Error)
-                            .with_title("Ollama request failed")
-                            .with_body(e)
-                            .open();
-                    }
+                Err(flowync::error::Compact::Suppose(e)) => {
+                    modal
+                        .dialog()
+                        .with_icon(Icon::Error)
+                        .with_title("Ollama request failed")
+                        .with_body(e)
+                        .open();
                 }
                 Err(flowync::error::Compact::Panicked(e)) => {
                     log::error!("task panicked: {e}");
@@ -431,15 +428,12 @@ impl Sessions {
                         .open();
                 }
             };
-            self.is_auto_refresh = false;
         });
     }
 
     #[inline]
     fn is_loading_models(&self) -> bool {
-        self.flower.is_active()
-            && self.flower_activity == OllamaFlowerActivity::ListModels
-            && !self.is_auto_refresh
+        self.flower.is_active() && self.flower_activity == OllamaFlowerActivity::ListModels
     }
 
     fn show_model_tab(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
@@ -469,7 +463,7 @@ impl Sessions {
             self.request_model_info(name, ollama.clone());
         }
         if list_models {
-            self.list_models(ollama.clone(), false);
+            self.list_models(ollama.clone());
         }
     }
 
@@ -522,7 +516,7 @@ impl Sessions {
                     .on_hover_text("Remove chat")
                     .clicked()
                 {
-                    if ui.input(|i| i.modifiers.shift) {
+                    if self.chats[idx].messages.is_empty() || ui.input(|i| i.modifiers.shift) {
                         self.remove_chat(idx);
                     } else {
                         self.chat_marked_for_deletion = idx;

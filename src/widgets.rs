@@ -2,7 +2,10 @@ use eframe::{
     egui::{self, Color32},
     emath::Numeric,
 };
-use ollama_rs::models::{LocalModel, ModelInfo};
+use ollama_rs::{
+    generation::options::GenerationOptions,
+    models::{LocalModel, ModelInfo},
+};
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SelectedModel {
@@ -206,29 +209,62 @@ struct ModelSettings {
     pub top_p: Option<f32>,
 }
 
-impl ModelSettings {
-    /// Default settings
-    fn default_set() -> Self {
-        Self {
-            mirostat: Some(0),
-            mirostat_eta: Some(0.1),
-            mirostat_tau: Some(5.0),
-            num_ctx: Some(2048),
-            num_gqa: Some(8),
-            num_gpu: Some(1),
-            num_thread: Some(0),
-            repeat_last_n: Some(64),
-            repeat_penalty: Some(1.1),
-            temperature: Some(0.8),
-            seed: Some(0),
-            stop: Some(Vec::new()),
-            tfs_z: Some(1.0),
-            num_predict: Some(128),
-            top_k: Some(40),
-            top_p: Some(0.9),
+impl From<ModelSettings> for GenerationOptions {
+    fn from(value: ModelSettings) -> Self {
+        let mut s = Self::default();
+        if let Some(mirostat) = value.mirostat {
+            s = s.mirostat(mirostat);
         }
+        if let Some(mirostat_eta) = value.mirostat_eta {
+            s = s.mirostat_eta(mirostat_eta);
+        }
+        if let Some(mirostat_tau) = value.mirostat_tau {
+            s = s.mirostat_tau(mirostat_tau);
+        }
+        if let Some(num_ctx) = value.num_ctx {
+            s = s.num_ctx(num_ctx);
+        }
+        if let Some(num_gqa) = value.num_gqa {
+            s = s.num_gqa(num_gqa);
+        }
+        if let Some(num_gpu) = value.num_gpu {
+            s = s.num_gpu(num_gpu);
+        }
+        if let Some(num_thread) = value.num_thread {
+            s = s.num_thread(num_thread);
+        }
+        if let Some(repeat_last_n) = value.repeat_last_n {
+            s = s.repeat_last_n(repeat_last_n);
+        }
+        if let Some(repeat_penalty) = value.repeat_penalty {
+            s = s.repeat_penalty(repeat_penalty);
+        }
+        if let Some(temperature) = value.temperature {
+            s = s.temperature(temperature);
+        }
+        if let Some(seed) = value.seed {
+            s = s.seed(seed);
+        }
+        if let Some(stop) = value.stop {
+            s = s.stop(stop);
+        }
+        if let Some(tfs_z) = value.tfs_z {
+            s = s.tfs_z(tfs_z);
+        }
+        if let Some(num_predict) = value.num_predict {
+            s = s.num_predict(num_predict);
+        }
+        if let Some(top_k) = value.top_k {
+            s = s.top_k(top_k);
+        }
+        if let Some(top_p) = value.top_p {
+            s = s.top_p(top_p);
+        }
+        s
     }
+}
 
+impl ModelSettings {
     fn edit_numeric<N: Numeric>(
         ui: &mut egui::Ui,
         val: &mut Option<N>,
@@ -282,7 +318,6 @@ impl ModelSettings {
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
-        // ollama_rs::generation::options::GenerationOptions;
         Self::edit_numeric(
             ui,
             &mut self.mirostat,
@@ -291,39 +326,19 @@ impl ModelSettings {
             "Microstat",
             "Enable Mirostat sampling for controlling perplexity.",
         );
+        Self::edit_numeric(ui, &mut self.mirostat_eta, 0.1, 0.01, "Microstat eta", "Influences how quickly the algorithm responds to feedback from the generated text. A lower learning rate will result in slower adjustments, while a higher learning rate will make the algorithm more responsive.");
+        Self::edit_numeric(ui, &mut self.mirostat_tau, 5.0, 0.01, "Microstat tau", "Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text.");
         Self::edit_numeric(
             ui,
-            &mut self.mirostat_eta,
-            0.1,
-            0.01,
-            "Microstat eta",
-            "Influences how quickly the algorithm responds to feedback from the generated text.",
-        );
-
-        Self::edit_numeric(
-            ui,
-            &mut self.num_gqa,
-            8,
+            &mut self.num_ctx,
+            2048,
             1.0,
-            "Number of GQA Groups",
-            "The number of GQA groups in the transformer layer. Required for some models.",
+            "Context Window",
+            "Sets the size of the context window used to generate the next token.",
         );
-        Self::edit_numeric(
-            ui,
-            &mut self.num_gpu,
-            1,
-            1.0,
-            "Number of GPUs",
-            "The number of layers to send to the GPU(s).",
-        );
-        Self::edit_numeric(
-            ui,
-            &mut self.num_thread,
-            0,
-            1.0,
-            "Number of Threads",
-            "Sets the number of threads to use during computation.",
-        );
+        Self::edit_numeric(ui, &mut self.num_gqa, 8, 1.0, "Number of GQA Groups", "The number of GQA groups in the transformer layer. Required for some models, for example it is 8 for llama2:70b.");
+        Self::edit_numeric(ui, &mut self.num_gpu, 1, 1.0, "GPU Layers", "The number of layers to send to the GPU(s). On macOS it defaults to 1 to enable metal support, 0 to disable.");
+        Self::edit_numeric(ui, &mut self.num_thread, 0, 1.0, "Number of Threads", "Sets the number of threads to use during computation. By default, Ollama will detect this for optimal performance. It is recommended to set this value to the number of physical CPU cores your system has (as opposed to the logical number of cores).");
         Self::edit_numeric(
             ui,
             &mut self.repeat_last_n,
@@ -336,60 +351,55 @@ impl ModelSettings {
             ui,
             &mut self.repeat_penalty,
             1.1,
-            0.1,
+            0.01,
             "Repeat Penalty",
-            "Sets how strongly to penalize repetitions.",
+            "Sets how strongly to penalize repetitions. A higher value (e.g., 1.5) will penalize repetitions more strongly, while a lower value (e.g., 0.9) will be more lenient.",
         );
         Self::edit_numeric(ui, &mut self.temperature, 0.8, 0.1, "Temperature", "The temperature of the model. Increasing the temperature will make the model answer more creatively.");
-        Self::edit_numeric(
-            ui,
-            &mut self.seed,
-            0,
-            1.0,
-            "Seed",
-            "Sets the random number seed to use for generation.",
-        );
+        Self::edit_numeric(ui, &mut self.seed, 0, 1.0, "Seed", "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.");
 
-        //ui.collapsing("Stop Sequences", |ui| {
-        //    ui.label(
-        //        "When this pattern is encountered the LLM will stop generating text and return.",
-        //    );
-        //    if let Some(ref mut stop_patterns) = self.stop {
-        //        for (i, pattern) in stop_patterns.iter().enumerate() {
-        //            ui.text_input(&mut stop_patterns[i])
-        //                .label(format!("Stop {}", i + 1));
-        //        }
-        //        ui.add(
-        //            egui::Button::new("Add Stop Pattern")
-        //                .on_click(|| stop_patterns.push(String::new())),
-        //        );
-        //    }
-        //});
+        ui.collapsing("Stop Sequence", |ui| {
+            ui.label(
+                "Sets the stop sequences to use. \
+                When this pattern is encountered the LLM will stop generating text and return.",
+            );
+            let mut enabled = self.stop.is_some();
+            ui.checkbox(&mut enabled, "Enable");
+            if !enabled {
+                self.stop = None;
+            } else if self.stop.is_none() {
+                self.stop = Some(Vec::new());
+            }
 
-        Self::edit_numeric(
-            ui,
-            &mut self.tfs_z,
-            1.0,
-            0.1,
-            "Tail-Free Sampling Z",
-            "Used to reduce the impact of less probable tokens from the output.",
-        );
-        Self::edit_numeric(
-            ui,
-            &mut self.num_predict,
-            128,
-            1.0,
-            "Number to Predict",
-            "Maximum number of tokens to predict when generating text.",
-        );
-        Self::edit_numeric(ui, &mut self.top_k, 40, 1.0, "Top K", "Reduces the probability of generating nonsense. A higher value will give more diverse answers.");
-        Self::edit_numeric(
-            ui,
-            &mut self.top_p,
-            0.9,
-            0.1,
-            "Top P",
-            "Works together with top-k. A higher value will lead to more diverse text.",
-        );
+            ui.add_enabled_ui(self.stop.is_some(), |ui| {
+                if let Some(ref mut stop) = self.stop {
+                    stop.retain_mut(|pat| {
+                        ui.horizontal(|ui| {
+                            ui.text_edit_singleline(pat);
+                            !ui.button("❌").clicked()
+                        })
+                        .inner
+                    });
+                    if stop.is_empty() {
+                        ui.label("No stop sequences set, add one.");
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("➕ Add").clicked() {
+                            stop.push(String::new());
+                        }
+                        if ui.button("Clear").clicked() {
+                            stop.clear();
+                        }
+                    });
+                } else {
+                    let _ = ui.button("➕ Add");
+                }
+            });
+        });
+
+        Self::edit_numeric(ui, &mut self.tfs_z, 1.0, 0.01, "Tail-Free Sampling Z", "Tail free sampling is used to reduce the impact of less probable tokens from the output. A higher value (e.g., 2.0) will reduce the impact more, while a value of 1.0 disables this setting.");
+        Self::edit_numeric(ui, &mut self.num_predict, 128, 1.0, "Number to Predict", "Maximum number of tokens to predict when generating text. (Default: 128, -1 = infinite generation, -2 = fill context)");
+        Self::edit_numeric(ui, &mut self.top_k, 40, 1.0, "Top K", "Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative.");
+        Self::edit_numeric(ui, &mut self.top_p, 0.9, 0.01, "Top P", "Works together with top-k. A higher value (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.");
     }
 }

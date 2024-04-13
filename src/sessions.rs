@@ -4,7 +4,7 @@ use crate::{
 };
 use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
-use egui_modal::{Icon, Modal, ModalStyle};
+use egui_modal::{Icon, Modal};
 use egui_virtual_list::VirtualList;
 use flowync::{CompactFlower, CompactHandle};
 use ollama_rs::{

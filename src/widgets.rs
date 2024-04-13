@@ -1,5 +1,3 @@
-use std::ops::{Index, IndexMut};
-
 use eframe::{
     egui::{self, Color32},
     emath::Numeric,

@@ -94,7 +94,7 @@ pub struct Sessions {
     pending_model_infos: HashMap<String, ()>,
     #[serde(skip)]
     virtual_list: Rc<RefCell<VirtualList>>,
-    is_edit_modal: bool,
+    edit_modal_open: bool,
     edited_chat: usize,
     chat_export_format: ChatExportFormat,
 }
@@ -120,7 +120,7 @@ impl Default for Sessions {
             model_picker: ModelPicker::default(),
             pending_model_infos: HashMap::new(),
             virtual_list: Rc::new(RefCell::new(VirtualList::default())),
-            is_edit_modal: false,
+            edit_modal_open: false,
             edited_chat: 0,
             chat_export_format: ChatExportFormat::default(),
         }
@@ -199,30 +199,21 @@ impl Sessions {
 
         let mut modal = Modal::new(ctx, "sessions_main_modal");
         let mut chat_modal = Modal::new(ctx, "chat_main_modal").with_close_on_outside_click(true);
-        let mut left_panel_modal =
-            Modal::new(ctx, "left_panel_chats_modal").with_close_on_outside_click(true);
 
-        if self.is_edit_modal {
-            left_panel_modal = left_panel_modal.with_style(&ModalStyle {
-                window_title: Some("Edit Chat".to_string()),
-                default_height: Some(10.0), // ¯\_(ツ)_/¯
-                ..Default::default()
-            })
+        if self.edit_modal_open {
+            let mut open = self.edit_modal_open;
+            egui::Window::new("Edit Chat")
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    self.show_edit_modal_inner(ui, ollama);
+                });
+            self.edit_modal_open = open;
         }
-
-        left_panel_modal.show(|ui| {
-            if self.is_edit_modal {
-                self.show_edit_modal_inner(ui, &left_panel_modal, ollama);
-            } else {
-                self.show_remove_chat_modal_inner(ui, &left_panel_modal);
-            }
-        });
 
         // show dialogs created on the previous frame, if we move this into the end of the function
         // it won't be located in the center of the window but in the center of the centralpanel instead
-        if modal.is_open() || chat_modal.is_open() {
-            left_panel_modal.close();
-        }
         chat_modal.show_dialog();
         modal.show_dialog();
 
@@ -231,7 +222,7 @@ impl Sessions {
             .resizable(true)
             .max_width(avail_width * 0.5)
             .show(ctx, |ui| {
-                self.show_left_panel(ui, ollama, &left_panel_modal);
+                self.show_left_panel(ui, ollama);
                 ui.allocate_space(ui.available_size());
             });
 
@@ -356,17 +347,13 @@ impl Sessions {
         });
     }
 
-    fn show_edit_modal_inner(&mut self, ui: &mut egui::Ui, modal: &Modal, ollama: &Ollama) {
-        modal.frame(ui, |ui| {
-            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.show_edit_modal_scrollarea(ui, ollama);
-                });
-            });
+    fn show_edit_modal_inner(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            self.show_edit_modal_scrollarea(ui, ollama);
         });
     }
 
-    fn show_left_panel(&mut self, ui: &mut egui::Ui, ollama: &Ollama, modal: &Modal) {
+    fn show_left_panel(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
         ui.add_space(ui.style().spacing.window_margin.top);
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, SessionTab::Chats, "Chats");
@@ -377,7 +364,11 @@ impl Sessions {
 
         match self.tab {
             SessionTab::Chats => {
+                let modal = Modal::new(ui.ctx(), "remove_chat_modal");
                 self.show_chats(ui, &modal);
+                modal.show(|ui| {
+                    self.show_remove_chat_modal_inner(ui, &modal);
+                });
             }
             SessionTab::Model => {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -520,7 +511,7 @@ impl Sessions {
                         self.remove_chat(idx);
                     } else {
                         self.chat_marked_for_deletion = idx;
-                        self.is_edit_modal = false;
+                        self.edit_modal_open = false;
                         modal.open();
                     }
                     ignore_click = true;
@@ -535,9 +526,8 @@ impl Sessions {
                     .on_hover_text("Edit")
                     .clicked()
                 {
-                    (ignore_click, self.is_edit_modal) = (true, true);
+                    (ignore_click, self.edit_modal_open) = (true, true);
                     self.edited_chat = idx;
-                    modal.open();
                 }
             });
         });

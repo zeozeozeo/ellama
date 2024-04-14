@@ -9,7 +9,10 @@ use egui_modal::{Icon, Modal};
 use egui_virtual_list::VirtualList;
 use flowync::{error::Compact, CompactFlower, CompactHandle};
 use ollama_rs::{
-    generation::chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
+    generation::{
+        chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
+        options::GenerationOptions,
+    },
     Ollama,
 };
 use std::{
@@ -277,13 +280,16 @@ async fn request_completion(
     handle: &CompletionFlowerHandle,
     stop_generating: Arc<AtomicBool>,
     selected_model: String,
+    options: GenerationOptions,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!(
         "requesting completion... (history length: {})",
         messages.len()
     );
     let mut stream: ChatMessageResponseStream = ollama
-        .send_chat_messages_stream(ChatMessageRequest::new(selected_model, messages))
+        .send_chat_messages_stream(
+            ChatMessageRequest::new(selected_model, messages).options(options),
+        )
         .await?;
 
     log::info!("reading response...");
@@ -449,6 +455,7 @@ impl Chat {
         let ollama = ollama.clone();
         let stop_generation = self.stop_generating.clone();
         let selected_model = self.model_picker.selected.name.clone();
+        let generation_options = self.model_picker.get_generation_options();
         tokio::spawn(async move {
             handle.activate();
             let _ = request_completion(
@@ -457,6 +464,7 @@ impl Chat {
                 &handle,
                 stop_generation,
                 selected_model,
+                generation_options,
             )
             .await
             .map_err(|e| {

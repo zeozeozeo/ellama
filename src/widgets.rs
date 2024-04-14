@@ -171,6 +171,11 @@ impl ModelPicker {
     pub fn has_selection(&self) -> bool {
         !self.selected.name.is_empty()
     }
+
+    #[inline]
+    pub fn get_generation_options(&self) -> GenerationOptions {
+        self.settings.clone().into()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]

@@ -142,7 +142,7 @@ impl ModelPicker {
 
             const DOCS_LINK: &str = "https://github.com/ollama/ollama/blob/main/docs/modelfile.md#template";
             ui.hyperlink_to("Ollama Docmentation", DOCS_LINK).on_hover_text(DOCS_LINK);
-        
+
             let mut enabled = self.template.is_some();
             ui.horizontal(|ui| {
                 ui.checkbox(&mut enabled, "Enable");
@@ -210,10 +210,7 @@ impl ModelPicker {
     }
 
     pub fn select_best_model(&mut self, models: &[LocalModel]) {
-        if let Some(m) = models
-            .iter()
-            .max_by_key(|m| m.size) 
-        { 
+        if let Some(m) = models.iter().max_by_key(|m| m.size) {
             self.selected = m.clone().into();
         }
 

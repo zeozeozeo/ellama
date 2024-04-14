@@ -281,16 +281,17 @@ async fn request_completion(
     stop_generating: Arc<AtomicBool>,
     selected_model: String,
     options: GenerationOptions,
+    template: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!(
         "requesting completion... (history length: {})",
         messages.len()
     );
-    let mut stream: ChatMessageResponseStream = ollama
-        .send_chat_messages_stream(
-            ChatMessageRequest::new(selected_model, messages).options(options),
-        )
-        .await?;
+    let mut request = ChatMessageRequest::new(selected_model, messages).options(options);
+    if let Some(template) = template {
+        request = request.template(template);
+    }
+    let mut stream: ChatMessageResponseStream = ollama.send_chat_messages_stream(request).await?;
 
     log::info!("reading response...");
 
@@ -456,6 +457,7 @@ impl Chat {
         let stop_generation = self.stop_generating.clone();
         let selected_model = self.model_picker.selected.name.clone();
         let generation_options = self.model_picker.get_generation_options();
+        let template = self.model_picker.template.clone();
         tokio::spawn(async move {
             handle.activate();
             let _ = request_completion(
@@ -465,6 +467,7 @@ impl Chat {
                 stop_generation,
                 selected_model,
                 generation_options,
+                template,
             )
             .await
             .map_err(|e| {

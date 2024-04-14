@@ -53,6 +53,7 @@ pub struct ModelPicker {
     pub selected: SelectedModel,
     pub info: Option<ModelInfo>,
     settings: ModelSettings,
+    pub template: Option<String>,
 }
 
 pub enum RequestInfoType<'a> {
@@ -111,6 +112,57 @@ impl ModelPicker {
 
         ui.collapsing("Settings", |ui| {
             self.settings.show(ui);
+        });
+
+        ui.collapsing("Set Template",|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Prompt template to be passed into the model. It may include (optionally) a system message, a user's message and the response from the model. Note: syntax may be model specific. Templates use Go ");
+                ui.style_mut().spacing.item_spacing.x = 0.0;
+                const TEMPLATE_LINK: &str = "https://pkg.go.dev/text/template";
+                ui.hyperlink_to("template syntax", TEMPLATE_LINK).on_hover_text(TEMPLATE_LINK);
+                ui.label(". This overrides what is defined in the Modelfile. The default template is shown in the Template header.");
+            });
+            egui::Grid::new("set_template_variable_grid").striped(true).num_columns(2).show(ui, |ui| {
+                ui.add(egui::Label::new("Variable").wrap(true));
+                ui.add(egui::Label::new("Description").wrap(true));
+                ui.end_row();
+
+                ui.code("{{ .System }}");
+                ui.add(egui::Label::new("The system message used to specify custom behavior.").wrap(true));
+                ui.end_row();
+
+                ui.code("{{ .Prompt }}");
+                ui.add(egui::Label::new("The user prompt message.").wrap(true));
+                ui.end_row();
+
+                ui.code("{{ .Response }}");
+                ui.add(egui::Label::new("The response from the model. When generating a response, text after this variable is omitted.").wrap(true));
+                ui.end_row();
+            });
+
+            const DOCS_LINK: &str = "https://github.com/ollama/ollama/blob/main/docs/modelfile.md#template";
+            ui.hyperlink_to("Ollama Docmentation", DOCS_LINK).on_hover_text(DOCS_LINK);
+        
+            let mut enabled = self.template.is_some();
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut enabled, "Enable");
+                ui.label("(overrides the template set in the Modelfile)");
+            });
+            if !enabled {
+                self.template = None;
+            } else if self.template.is_none() {
+                self.template = Some(String::new());
+            }
+
+            ui.add_enabled_ui(self.template.is_some(), |ui| {
+                if let Some(ref mut template) = self.template {
+                    ui.add(egui::TextEdit::multiline(template).hint_text(r#"{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant"#).code_editor());
+                }
+            });
         });
 
         ui.separator();
@@ -453,7 +505,16 @@ impl ModelSettings {
             });
         });
 
-        Self::edit_numeric(ui, &mut self.tfs_z, 1.0, 0.01, "Tail-Free Sampling Z", "Tail free sampling is used to reduce the impact of less probable tokens from the output. A higher value (e.g., 2.0) will reduce the impact more, while a value of 1.0 disables this setting.");
+        Self::edit_numeric(
+            ui,
+            &mut self.tfs_z,
+            1.0,
+            0.01,
+            "Tail-Free Sampling Z",
+            "Tail free sampling is used to reduce the impact \
+            of less probable tokens from the output. A higher value (e.g., 2.0) \
+            will reduce the impact more, while a value of 1.0 disables this setting.",
+        );
         Self::edit_numeric(ui, &mut self.num_predict, 128, 1.0, "Number to Predict", "Maximum number of tokens to predict when generating text. (Default: 128, -1 = infinite generation, -2 = fill context)");
         Self::edit_numeric(ui, &mut self.top_k, 40, 1.0, "Top-K", "Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative.");
         Self::edit_numeric(ui, &mut self.top_p, 0.9, 0.01, "Top-P", "Works together with top-k. A higher value (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.");

@@ -293,10 +293,14 @@ impl Sessions {
             .default_open(true)
             .show(ui, |ui| {
                 let mut request_info_for: Option<String> = None;
+                let is_loading_models = self.is_loading_models();
+                let Some(chat) = self.chats.get_mut(self.edited_chat) else {
+                    return;
+                };
                 let mut list_models = false;
-                self.model_picker.show(
+                chat.model_picker.show(
                     ui,
-                    if self.is_loading_models() {
+                    if is_loading_models {
                         None
                     } else {
                         Some(&self.models)
@@ -337,7 +341,10 @@ impl Sessions {
                 let task = rfd::AsyncFileDialog::new()
                     .add_filter(format!("{format:?} file"), format.extensions())
                     .save_file();
-                let messages = self.chats[self.edited_chat].messages.clone();
+                let Some(chat) = self.chats.get_mut(self.edited_chat) else {
+                    return;
+                };
+                let messages = chat.messages.clone();
                 tokio::spawn(async move {
                     let _ = crate::chat::export_messages(messages, format, task)
                         .await

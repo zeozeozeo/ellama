@@ -342,8 +342,8 @@ impl ModelSettings {
 
     fn show(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("Mirostat", |ui| {
-            ui.label("Enable Mirostat sampling for controlling perplexity. (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0)");
-            
+            ui.label("Enable Mirostat sampling for controlling perplexity.");
+
             let mut enabled = self.mirostat.is_some();
             ui.checkbox(&mut enabled, "Enable");
             if !enabled {
@@ -450,7 +450,7 @@ impl ModelSettings {
 
         Self::edit_numeric(ui, &mut self.tfs_z, 1.0, 0.01, "Tail-Free Sampling Z", "Tail free sampling is used to reduce the impact of less probable tokens from the output. A higher value (e.g., 2.0) will reduce the impact more, while a value of 1.0 disables this setting.");
         Self::edit_numeric(ui, &mut self.num_predict, 128, 1.0, "Number to Predict", "Maximum number of tokens to predict when generating text. (Default: 128, -1 = infinite generation, -2 = fill context)");
-        Self::edit_numeric(ui, &mut self.top_k, 40, 1.0, "Top K", "Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative.");
-        Self::edit_numeric(ui, &mut self.top_p, 0.9, 0.01, "Top P", "Works together with top-k. A higher value (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.");
+        Self::edit_numeric(ui, &mut self.top_k, 40, 1.0, "Top-K", "Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative.");
+        Self::edit_numeric(ui, &mut self.top_p, 0.9, 0.01, "Top-P", "Works together with top-k. A higher value (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.");
     }
 }

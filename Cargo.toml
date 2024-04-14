@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 catppuccin-egui = { git = "https://github.com/zeozeozeo/catppuccin-egui.git", branch = "egui-0.27" }
 eframe = { version = "0.27", features = ["persistence"] }
-egui_commonmark = { git = "https://github.com/lampsitter/egui_commonmark.git", features = ["better_syntax_highlighting"] }
+egui_commonmark = { git = "https://github.com/zeozeozeo/egui_commonmark.git", branch = "latex", features = ["better_syntax_highlighting"] }
 env_logger = "0.11"
 flowync = { version = "5.1", features = ["compact"] }
 log = "0.4.21"

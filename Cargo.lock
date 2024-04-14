@@ -1272,7 +1272,7 @@ dependencies = [
 [[package]]
 name = "egui_commonmark"
 version = "0.15.0"
-source = "git+https://github.com/lampsitter/egui_commonmark.git#707401837f99479021574c5cdfca01e6e00b0a74"
+source = "git+https://github.com/zeozeozeo/egui_commonmark.git?branch=latex#d1392d1da4f0c6c229fba0f3265b9cde43db97a8"
 dependencies = [
  "egui",
  "egui_extras",
@@ -3011,9 +3011,8 @@ checksum = "43d84d1d7a6ac92673717f9f6d1518374ef257669c24ebc5ac25d5033828be58"
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f0530d13d87d1f549b66a3e8d0c688952abe5994e204ed62615baaf25dc029c"
+version = "0.10.0"
+source = "git+https://github.com/pulldown-cmark/pulldown-cmark.git?branch=branch_0.11#2540d4095d5f94fd972c93b927e9bec83b0c5079"
 dependencies = [
  "bitflags 2.5.0",
  "memchr",

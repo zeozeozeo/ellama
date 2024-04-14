@@ -17,8 +17,8 @@ pub struct Style {
     /// self.strong* (emphasized, e.g. bold)
     pub strong: bool,
 
-    /// $small$
-    pub small: bool,
+    /// $inline math$, $$ block math $$
+    pub math: bool,
 
     /// ^raised^
     pub raised: bool,
@@ -107,14 +107,14 @@ pub fn highlight_easymark(egui_style: &egui::Style, mut text: &str) -> egui::tex
             }
             style.strong ^= true;
         } else if text.starts_with('$') {
-            skip = 1;
-            if style.small {
+            skip = if text.starts_with("$$") { 2 } else { 1 };
+            if style.math {
                 // Include the character that is ending this style:
                 job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
                 text = &text[skip..];
                 skip = 0;
             }
-            style.small ^= true;
+            style.math ^= true;
         } else if text.starts_with('^') {
             skip = 1;
             if style.raised {
@@ -169,9 +169,9 @@ fn format_from_style(egui_style: &egui::Style, emark_style: &Style) -> egui::tex
 
     let text_style = if emark_style.heading {
         TextStyle::Heading
-    } else if emark_style.code {
+    } else if emark_style.code | emark_style.math {
         TextStyle::Monospace
-    } else if emark_style.small | emark_style.raised {
+    } else if emark_style.raised {
         TextStyle::Small
     } else {
         TextStyle::Body

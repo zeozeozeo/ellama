@@ -210,10 +210,13 @@ impl ModelPicker {
     }
 
     pub fn select_best_model(&mut self, models: &[LocalModel]) {
-        models
+        if let Some(m) = models
             .iter()
-            .max_by_key(|m| m.size)
-            .map(|m| self.selected = m.clone().into());
+            .max_by_key(|m| m.size) 
+        { 
+            self.selected = m.clone().into();
+        }
+
         if self.has_selection() {
             log::info!("subjectively selected best model: {}", self.selected.name);
         }
@@ -231,13 +234,13 @@ impl ModelPicker {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-enum Mirostat {
+enum MirostatKind {
     Disabled,
     Mirostat,
     Mirostat2,
 }
 
-impl Mirostat {
+impl MirostatKind {
     #[inline]
     const fn to_u8(self) -> u8 {
         self as u8
@@ -256,7 +259,7 @@ impl Mirostat {
 #[derive(Default, Clone, serde::Deserialize, serde::Serialize)]
 struct ModelSettings {
     /// Enable Mirostat sampling for controlling perplexity. (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0)
-    pub mirostat: Option<Mirostat>,
+    pub mirostat: Option<MirostatKind>,
     /// Influences how quickly the algorithm responds to feedback from the generated text. A lower learning rate will result in slower adjustments, while a higher learning rate will make the algorithm more responsive. (Default: 0.1)
     pub mirostat_eta: Option<f32>,
     /// Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text. (Default: 5.0)
@@ -406,7 +409,7 @@ impl ModelSettings {
             if !enabled {
                 self.mirostat = None;
             } else if self.mirostat.is_none() {
-                self.mirostat = Some(Mirostat::Disabled);
+                self.mirostat = Some(MirostatKind::Disabled);
             }
 
             ui.add_enabled_ui(self.mirostat.is_some(), |ui| {
@@ -416,17 +419,17 @@ impl ModelSettings {
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut self.mirostat,
-                                Some(Mirostat::Disabled),
+                                Some(MirostatKind::Disabled),
                                 "Disabled",
                             );
                             ui.selectable_value(
                                 &mut self.mirostat,
-                                Some(Mirostat::Mirostat),
+                                Some(MirostatKind::Mirostat),
                                 "Mirostat",
                             );
                             ui.selectable_value(
                                 &mut self.mirostat,
-                                Some(Mirostat::Mirostat2),
+                                Some(MirostatKind::Mirostat2),
                                 "Mirostat 2.0",
                             );
                         });

@@ -176,7 +176,7 @@ impl Message {
             } else {
                 CommonMarkViewer::new(format!("message_{idx}_commonmark"))
                     .max_image_width(Some(512))
-                    .render_math_fn(Some(&|ui, math, inline| {}))
+                    .render_math_fn(Some(&|_ui, _math, _inline| {}))
                     .show(ui, commonmark_cache, &self.content);
             }
         });

@@ -398,10 +398,6 @@ impl ModelSettings {
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
-        if ui.button("Reset Settings").clicked() {
-            *self = Self::default();
-        }
-
         ui.collapsing("Mirostat", |ui| {
             ui.label("Enable Mirostat sampling for controlling perplexity.");
 

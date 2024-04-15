@@ -2,7 +2,7 @@ use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets:
 use anyhow::Result;
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
-    Pos2, Rect, Stroke, TextureOptions,
+    Pos2, Rect, Stroke,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -176,31 +176,7 @@ impl Message {
             } else {
                 CommonMarkViewer::new(format!("message_{idx}_commonmark"))
                     .max_image_width(Some(512))
-                    .render_math_fn(Some(&|ui, math, inline| {
-                        if !inline {
-                            ui.label("\n");
-                        }
-                        let color = if ui.style().visuals.dark_mode {
-                            "white"
-                        } else {
-                            "black"
-                        };
-                        let uri = if inline {
-                            format!("https://math.vercel.app?color={color}&inline={math}.svg")
-                        } else {
-                            format!("https://math.vercel.app?color={color}&from={math}.svg")
-                        };
-                        ui.with_layout(
-                            Layout::left_to_right(Align::Min).with_cross_justify(true),
-                            |ui| {
-                                ui.add(
-                                    egui::Image::new(uri)
-                                        .fit_to_original_size(1.0)
-                                        .texture_options(TextureOptions::NEAREST),
-                                );
-                            },
-                        );
-                    }))
+                    .render_math_fn(Some(&|_ui, _math, _inline| {}))
                     .show(ui, commonmark_cache, &self.content);
             }
         });

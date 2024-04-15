@@ -49,8 +49,6 @@ impl Ellama {
         // cc.egui_ctx
         //     .style_mut(|s| s.visuals = egui::Visuals::light());
 
-        egui_extras::install_image_loaders(&cc.egui_ctx);
-
         // change visuals
         cc.egui_ctx
             .style_mut(|s| s.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand));

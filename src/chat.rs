@@ -632,7 +632,9 @@ impl Chat {
             .show(ui, |ui| {
                 self.virtual_list
                     .ui_custom_layout(ui, self.messages.len(), |ui, index| {
-                        let message = &mut self.messages[index];
+                        let Some(message) = self.messages.get_mut(index) else {
+                            return 0;
+                        };
                         let prev_speaking = message.is_speaking;
                         let short_name = &self.model_picker.selected.short_name;
                         if message.show(

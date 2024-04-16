@@ -1,5 +1,5 @@
 use eframe::{
-    egui::{self, Color32},
+    egui::{self, Color32, RichText},
     emath::Numeric,
 };
 use ollama_rs::{
@@ -123,8 +123,8 @@ impl ModelPicker {
                 ui.label(". This overrides what is defined in the Modelfile. The default template is shown in the Template header.");
             });
             egui::Grid::new("set_template_variable_grid").striped(true).num_columns(2).show(ui, |ui| {
-                ui.add(egui::Label::new("Variable").wrap(true));
-                ui.add(egui::Label::new("Description").wrap(true));
+                ui.add(egui::Label::new(RichText::new("Variable").strong()).wrap(true));
+                ui.add(egui::Label::new(RichText::new("Description").strong()).wrap(true));
                 ui.end_row();
 
                 ui.code("{{ .System }}");

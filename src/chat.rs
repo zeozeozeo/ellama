@@ -63,16 +63,10 @@ impl Default for Message {
     }
 }
 
-const MESSAGE_ABORTED_TEXT: &str = "\\<empty message\\>";
-
-fn tts_control(tts: SharedTts, mut text: String, speak: bool) {
+fn tts_control(tts: SharedTts, text: String, speak: bool) {
     std::thread::spawn(move || {
         if let Some(tts) = tts {
             if speak {
-                if text == MESSAGE_ABORTED_TEXT {
-                    // don't speak backslashes
-                    text = "Empty message".to_string();
-                }
                 let _ = tts
                     .write()
                     .speak(text, true)
@@ -144,7 +138,12 @@ impl Message {
 
         // for some reason commonmark creates empty space above it when created,
         // compensate for that
-        if !self.content.is_empty() && !self.is_error {
+        let message = if self.content.is_empty() {
+            "\\<empty message\\>"
+        } else {
+            &self.content
+        };
+        if !message.is_empty() && !self.is_error {
             ui.add_space(-24.0);
         }
 
@@ -152,7 +151,7 @@ impl Message {
         let mut retry = false;
         ui.horizontal(|ui| {
             ui.add_space(message_offset);
-            if self.content.is_empty() && !self.is_error {
+            if self.content.is_empty() && self.is_generating && !self.is_error {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
 
@@ -176,7 +175,7 @@ impl Message {
             } else {
                 CommonMarkViewer::new(format!("message_{idx}_commonmark"))
                     .max_image_width(Some(512))
-                    .show(ui, commonmark_cache, &self.content);
+                    .show(ui, commonmark_cache, message);
             }
         });
 
@@ -326,11 +325,7 @@ async fn request_completion(
         "completion request complete, response length: {}",
         response.len()
     );
-    if response.is_empty() {
-        handle.success(MESSAGE_ABORTED_TEXT.to_string()); // prevent html tags
-    } else {
-        handle.success(response.trim().to_string());
-    }
+    handle.success(response.trim().to_string());
     Ok(())
 }
 

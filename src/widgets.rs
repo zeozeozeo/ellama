@@ -43,7 +43,7 @@ pub enum RequestInfoType<'a> {
     ModelInfo(&'a str),
 }
 
-pub fn picker_frame(ui: &mut egui::Ui, show: impl egui::Widget) -> egui::Response {
+fn picker_frame(ui: &mut egui::Ui, show: impl egui::Widget) -> egui::Response {
     let style = ui.style();
 
     egui::Frame {

@@ -791,14 +791,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "catppuccin-egui"
-version = "5.0.0"
-source = "git+https://github.com/zeozeozeo/catppuccin-egui.git?branch=egui-0.27#21ec76f5a6eb40e131948389f674f9ccc993bade"
-dependencies = [
- "egui",
-]
-
-[[package]]
 name = "cc"
 version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1338,7 +1330,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytesize",
- "catppuccin-egui",
  "chrono",
  "eframe",
  "egui-modal",

@@ -46,6 +46,7 @@ pub struct Message {
     is_error: bool,
     #[serde(skip)]
     is_speaking: bool,
+    model_name: String,
 }
 
 impl Default for Message {
@@ -59,6 +60,7 @@ impl Default for Message {
             clicked_copy: false,
             is_error: false,
             is_speaking: false,
+            model_name: String::new(),
         }
     }
 }
@@ -81,23 +83,40 @@ fn tts_control(tts: SharedTts, text: String, speak: bool) {
     });
 }
 
+/// Convert a model name into a short name.
+///
+/// # Example
+///
+/// - nous-hermes2:latest -> Nous
+/// - gemma:latest -> Gemma
+/// - starling-lm:7b-beta-q5_K_M -> Starling
+fn make_short_name(name: &str) -> String {
+    let mut c = name.chars().take_while(|c| c.is_alphanumeric());
+    match c.next() {
+        None => "Llama".to_string(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.collect::<String>().as_str(),
+    }
+}
+
 impl Message {
     #[inline]
-    fn user(content: String) -> Self {
+    fn user(content: String, model_name: String) -> Self {
         Self {
             content,
             role: Role::User,
             is_generating: false,
+            model_name,
             ..Default::default()
         }
     }
 
     #[inline]
-    fn assistant(content: String) -> Self {
+    fn assistant(content: String, model_name: String) -> Self {
         Self {
             content,
             role: Role::Assistant,
             is_generating: true,
+            model_name,
             ..Default::default()
         }
     }
@@ -113,8 +132,6 @@ impl Message {
         commonmark_cache: &mut CommonMarkCache,
         tts: SharedTts,
         idx: usize,
-        short_model_name: &str,
-        model_name: &str,
     ) -> bool {
         // message role
         let message_offset = ui
@@ -125,12 +142,12 @@ impl Message {
                 } else {
                     let f = ui.label("🐱").rect.left();
                     let offset = ui
-                        .label(short_model_name)
-                        .on_hover_text(model_name)
+                        .label(make_short_name(&self.model_name))
+                        .on_hover_text(&self.model_name)
                         .rect
                         .left()
                         - f;
-                    ui.add_enabled(false, egui::Label::new(model_name));
+                    ui.add_enabled(false, egui::Label::new(&self.model_name));
                     offset
                 }
             })
@@ -138,12 +155,7 @@ impl Message {
 
         // for some reason commonmark creates empty space above it when created,
         // compensate for that
-        let message = if self.content.is_empty() {
-            "\\<empty message\\>"
-        } else {
-            &self.content
-        };
-        if !message.is_empty() && !self.is_error {
+        if !self.content.is_empty() && !self.is_error {
             ui.add_space(-24.0);
         }
 
@@ -175,7 +187,7 @@ impl Message {
             } else {
                 CommonMarkViewer::new(format!("message_{idx}_commonmark"))
                     .max_image_width(Some(512))
-                    .show(ui, commonmark_cache, message);
+                    .show(ui, commonmark_cache, &self.content);
             }
         });
 
@@ -414,7 +426,9 @@ impl Chat {
         self.messages.retain(|m| !m.is_error);
 
         let prompt = self.chatbox.trim_end().to_string();
-        self.messages.push(Message::user(prompt.clone()));
+        let model_name = self.model_picker.selected.name.clone();
+        self.messages
+            .push(Message::user(prompt.clone(), model_name.clone()));
 
         const MAX_SUMMARY_LENGTH: usize = 24;
         if self.summary.is_empty() {
@@ -443,13 +457,13 @@ impl Chat {
         let context_messages = self.context_messages.clone();
 
         // get ready for assistant response
-        self.messages.push(Message::assistant(String::new()));
+        self.messages
+            .push(Message::assistant(String::new(), model_name.clone()));
 
         // spawn a new thread to generate the completion
         let handle = self.flower.handle(); // recv'd by gui thread
         let ollama = ollama.clone();
         let stop_generation = self.stop_generating.clone();
-        let selected_model = self.model_picker.selected.name.clone();
         let generation_options = self.model_picker.get_generation_options();
         let template = self.model_picker.template.clone();
         tokio::spawn(async move {
@@ -459,7 +473,7 @@ impl Chat {
                 context_messages,
                 &handle,
                 stop_generation,
-                selected_model,
+                model_name,
                 generation_options,
                 template,
             )
@@ -636,19 +650,7 @@ impl Chat {
                             return 0;
                         };
                         let prev_speaking = message.is_speaking;
-                        let short_name = &self.model_picker.selected.short_name;
-                        if message.show(
-                            ui,
-                            commonmark_cache,
-                            tts.clone(),
-                            index,
-                            if short_name.is_empty() {
-                                "Llama"
-                            } else {
-                                short_name
-                            },
-                            &self.model_picker.selected.name,
-                        ) {
+                        if message.show(ui, commonmark_cache, tts.clone(), index) {
                             self.retry_message_idx = Some(index - 1);
                         }
                         if !prev_speaking && message.is_speaking {

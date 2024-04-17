@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-catppuccin-egui = { git = "https://github.com/zeozeozeo/catppuccin-egui.git", branch = "egui-0.27" }
 eframe = { version = "0.27", features = ["persistence"] }
 egui_commonmark = { git = "https://github.com/lampsitter/egui_commonmark.git", features = ["better_syntax_highlighting"] }
 env_logger = "0.11"

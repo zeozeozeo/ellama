@@ -40,15 +40,6 @@ impl Default for Ellama {
 
 impl Ellama {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
-        // Restore app state using cc.storage (requires the "persistence" feature).
-        // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
-        // for e.g. egui::PaintCallback.
-        //catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MACCHIATO);
-        //cc.egui_ctx.style_mut(|s| s.wrap = Some(true));
-        // cc.egui_ctx
-        //     .style_mut(|s| s.visuals = egui::Visuals::light());
-
         // change visuals
         cc.egui_ctx
             .style_mut(|s| s.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand));

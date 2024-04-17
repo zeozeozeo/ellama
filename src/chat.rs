@@ -346,6 +346,7 @@ pub enum ChatExportFormat {
     #[default]
     Plaintext,
     Json,
+    Ron,
 }
 
 impl ToString for ChatExportFormat {
@@ -355,13 +356,14 @@ impl ToString for ChatExportFormat {
 }
 
 impl ChatExportFormat {
-    pub const ALL: [Self; 2] = [Self::Plaintext, Self::Json];
+    pub const ALL: [Self; 3] = [Self::Plaintext, Self::Json, Self::Ron];
 
     #[inline]
     pub const fn extensions(self) -> &'static [&'static str] {
         match self {
-            ChatExportFormat::Plaintext => &["txt"],
-            ChatExportFormat::Json => &["json"],
+            Self::Plaintext => &["txt"],
+            Self::Json => &["json"],
+            Self::Ron => &["ron"],
         }
     }
 }
@@ -398,6 +400,9 @@ pub async fn export_messages(
         }
         ChatExportFormat::Json => {
             serde_json::to_writer_pretty(&mut f, &messages)?;
+        }
+        ChatExportFormat::Ron => {
+            ron::ser::to_writer_pretty(&mut f, &messages, ron::ser::PrettyConfig::default())?;
         }
     }
 

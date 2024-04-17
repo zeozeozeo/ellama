@@ -1351,6 +1351,7 @@ dependencies = [
  "ollama-rs",
  "parking_lot",
  "rfd",
+ "ron",
  "serde",
  "serde_json",
  "timeago",

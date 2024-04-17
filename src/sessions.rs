@@ -5,6 +5,7 @@ use crate::{
 use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
 use egui_modal::{Icon, Modal};
+use egui_notify::{Toast, Toasts};
 use egui_virtual_list::VirtualList;
 use flowync::{CompactFlower, CompactHandle};
 use ollama_rs::{
@@ -27,6 +28,7 @@ pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 enum OllamaResponse {
     Models(Vec<LocalModel>),
     ModelInfo { name: String, info: ModelInfo },
+    Toast(Toast),
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -97,6 +99,8 @@ pub struct Sessions {
     edit_modal_open: bool,
     edited_chat: usize,
     chat_export_format: ChatExportFormat,
+    #[serde(skip)]
+    toasts: Toasts,
 }
 
 impl Default for Sessions {
@@ -123,6 +127,7 @@ impl Default for Sessions {
             edit_modal_open: false,
             edited_chat: 0,
             chat_export_format: ChatExportFormat::default(),
+            toasts: Toasts::default(),
         }
     }
 }
@@ -249,6 +254,9 @@ impl Sessions {
             prev_is_speaking && !self.is_speaking, // stopped_talking
             &mut self.commonmark_cache,
         );
+
+        // display toast queue
+        self.toasts.show(ctx);
     }
 
     fn show_remove_chat_modal_inner(&mut self, ui: &mut egui::Ui, modal: &Modal) {
@@ -345,10 +353,21 @@ impl Sessions {
                     return;
                 };
                 let messages = chat.messages.clone();
+                let handle = self.flower.handle();
                 tokio::spawn(async move {
-                    let _ = crate::chat::export_messages(messages, format, task)
+                    let toast = crate::chat::export_messages(messages, format, task)
                         .await
-                        .map_err(|e| log::error!("failed to export messages: {e}"));
+                        .map_err(|e| {
+                            log::error!("failed to export messages: {e}");
+                            e
+                        });
+
+                    handle.activate();
+                    if let Ok(toast) = toast {
+                        handle.success(OllamaResponse::Toast(toast))
+                    } else if let Err(e) = toast {
+                        handle.success(OllamaResponse::Toast(Toast::error(e.to_string())))
+                    };
                 });
             }
         });
@@ -407,6 +426,9 @@ impl Sessions {
                     for chat in self.chats.iter_mut() {
                         chat.model_picker.on_new_model_info(&name, &info);
                     }
+                }
+                Ok(OllamaResponse::Toast(toast)) => {
+                    self.toasts.add(toast);
                 }
                 Err(flowync::error::Compact::Suppose(e)) => {
                     modal

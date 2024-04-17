@@ -1,5 +1,5 @@
 use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets::ModelPicker};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
     Pos2, Rect, Stroke,
@@ -34,6 +34,7 @@ enum Role {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Message {
+    model_name: String,
     content: String,
     role: Role,
     #[serde(skip)]
@@ -46,7 +47,6 @@ pub struct Message {
     is_error: bool,
     #[serde(skip)]
     is_speaking: bool,
-    model_name: String,
 }
 
 impl Default for Message {
@@ -370,10 +370,10 @@ pub async fn export_messages(
     messages: Vec<Message>,
     format: ChatExportFormat,
     task: impl std::future::Future<Output = Option<rfd::FileHandle>>,
-) -> Result<()> {
+) -> Result<egui_notify::Toast> {
     let Some(file) = task.await else {
         log::info!("export cancelled");
-        anyhow::bail!("export cancelled");
+        return Ok(egui_notify::Toast::info("Export cancelled"));
     };
     log::info!(
         "exporting {} messages to {file:?} (format: {format:?})...",
@@ -385,12 +385,13 @@ pub async fn export_messages(
 
     match format {
         ChatExportFormat::Plaintext => {
-            for msg in messages {
+            for msg in &messages {
                 writeln!(
                     f,
-                    "{} - {:?}: {}",
+                    "{} - {:?} ({}): {}",
                     msg.time.to_rfc3339(),
                     msg.role,
+                    msg.model_name,
                     msg.content
                 )?;
             }
@@ -400,10 +401,14 @@ pub async fn export_messages(
         }
     }
 
-    f.flush()?;
+    f.flush().context("failed to flush writer")?;
 
     log::info!("export complete");
-    Ok(())
+    Ok(egui_notify::Toast::success(format!(
+        "Exported {} messages to {}",
+        messages.len(),
+        file.file_name(),
+    )))
 }
 
 impl Chat {

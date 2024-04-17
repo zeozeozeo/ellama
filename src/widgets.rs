@@ -1,5 +1,5 @@
 use eframe::{
-    egui::{self, Color32, RichText},
+    egui::{self, collapsing_header::CollapsingState, Color32, Layout, RichText},
     emath::Numeric,
 };
 use ollama_rs::{
@@ -41,6 +41,23 @@ pub struct ModelPicker {
 pub enum RequestInfoType<'a> {
     Models,
     ModelInfo(&'a str),
+}
+
+pub fn picker_frame(ui: &mut egui::Ui, show: impl egui::Widget) -> egui::Response {
+    let style = ui.style();
+
+    egui::Frame {
+        inner_margin: egui::Margin::same(4.0),
+        rounding: style.visuals.menu_rounding,
+        fill: style.visuals.extreme_bg_color,
+        ..egui::Frame::none()
+    }
+    .show(ui, |ui| {
+        ui.with_layout(Layout::top_down_justified(egui::Align::Min), |ui| {
+            ui.add(show);
+        });
+    })
+    .response
 }
 
 impl ModelPicker {
@@ -171,8 +188,28 @@ impl ModelPicker {
                 ("Template", info.template.as_str()),
             ] {
                 if !text.is_empty() {
-                    ui.collapsing(heading, |ui| {
-                        ui.code_editor(&mut text);
+                    picker_frame(ui, |ui: &mut egui::Ui| {
+                        let mut state = CollapsingState::load_with_default_open(
+                            ui.ctx(),
+                            ui.make_persistent_id(heading),
+                            false,
+                        );
+
+                        let resp = ui.add(
+                            egui::Label::new(heading)
+                                .selectable(false)
+                                .sense(egui::Sense::click()),
+                        );
+                        if resp.clicked() {
+                            state.toggle(ui);
+                        }
+
+                        state.show_body_unindented(ui, |ui| {
+                            ui.separator();
+                            ui.code_editor(&mut text);
+                        });
+
+                        resp
                     });
                 }
             }

@@ -43,7 +43,11 @@ pub enum RequestInfoType<'a> {
     ModelInfo(&'a str),
 }
 
-fn picker_frame(ui: &mut egui::Ui, show: impl egui::Widget) -> egui::Response {
+fn collapsing_frame<R>(
+    ui: &mut egui::Ui,
+    heading: &str,
+    show: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::Response {
     let style = ui.style();
 
     egui::Frame {
@@ -54,11 +58,37 @@ fn picker_frame(ui: &mut egui::Ui, show: impl egui::Widget) -> egui::Response {
     }
     .show(ui, |ui| {
         ui.with_layout(Layout::top_down_justified(egui::Align::Min), |ui| {
-            ui.add(show);
+            let mut state = CollapsingState::load_with_default_open(
+                ui.ctx(),
+                ui.make_persistent_id(heading),
+                false,
+            );
+
+            let resp = ui.add(
+                egui::Label::new(heading)
+                    .selectable(false)
+                    .sense(egui::Sense::click()),
+            );
+            if resp.clicked() {
+                state.toggle(ui);
+            }
+
+            state.show_body_unindented(ui, |ui| {
+                ui.separator();
+                show(ui);
+            });
+
+            resp
         });
     })
     .response
 }
+
+const TEMPLATE_HINT_TEXT: &str = r#"{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant"#;
 
 impl ModelPicker {
     pub fn show<R>(&mut self, ui: &mut egui::Ui, models: Option<&[LocalModel]>, mut request_info: R)
@@ -113,57 +143,6 @@ impl ModelPicker {
             self.settings.show(ui);
         });
 
-        ui.collapsing("Set Template",|ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Prompt template to be passed into the model. It may include (optionally) a system message, a user's message and the response from the model. Note: syntax may be model specific. Templates use Go ");
-                ui.style_mut().spacing.item_spacing.x = 0.0;
-                const TEMPLATE_LINK: &str = "https://pkg.go.dev/text/template";
-                ui.hyperlink_to("template syntax", TEMPLATE_LINK).on_hover_text(TEMPLATE_LINK);
-                ui.label(". This overrides what is defined in the Modelfile. The default template is shown in the Template header.");
-            });
-            egui::Grid::new("set_template_variable_grid").striped(true).num_columns(2).show(ui, |ui| {
-                ui.add(egui::Label::new(RichText::new("Variable").strong()).wrap(true));
-                ui.add(egui::Label::new(RichText::new("Description").strong()).wrap(true));
-                ui.end_row();
-
-                ui.code("{{ .System }}");
-                ui.add(egui::Label::new("The system message used to specify custom behavior.").wrap(true));
-                ui.end_row();
-
-                ui.code("{{ .Prompt }}");
-                ui.add(egui::Label::new("The user prompt message.").wrap(true));
-                ui.end_row();
-
-                ui.code("{{ .Response }}");
-                ui.add(egui::Label::new("The response from the model. When generating a response, text after this variable is omitted.").wrap(true));
-                ui.end_row();
-            });
-
-            const DOCS_LINK: &str = "https://github.com/ollama/ollama/blob/main/docs/modelfile.md#template";
-            ui.hyperlink_to("Ollama Docmentation", DOCS_LINK).on_hover_text(DOCS_LINK);
-
-            let mut enabled = self.template.is_some();
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut enabled, "Enable");
-                ui.label("(overrides the template set in the Modelfile)");
-            });
-            if !enabled {
-                self.template = None;
-            } else if self.template.is_none() {
-                self.template = Some(String::new());
-            }
-
-            ui.add_enabled_ui(self.template.is_some(), |ui| {
-                if let Some(ref mut template) = self.template {
-                    ui.add(egui::TextEdit::multiline(template).hint_text(r#"{{ if .System }}<|im_start|>system
-{{ .System }}<|im_end|>
-{{ end }}{{ if .Prompt }}<|im_start|>user
-{{ .Prompt }}<|im_end|>
-{{ end }}<|im_start|>assistant"#).code_editor());
-                }
-            });
-        });
-
         ui.separator();
 
         egui::Grid::new("selected_model_info_grid")
@@ -185,34 +164,70 @@ impl ModelPicker {
                 ("License", info.license.as_str()),
                 ("Modelfile", info.modelfile.as_str()),
                 ("Parameters", info.parameters.as_str()),
-                ("Template", info.template.as_str()),
             ] {
                 if !text.is_empty() {
-                    picker_frame(ui, |ui: &mut egui::Ui| {
-                        let mut state = CollapsingState::load_with_default_open(
-                            ui.ctx(),
-                            ui.make_persistent_id(heading),
-                            false,
-                        );
-
-                        let resp = ui.add(
-                            egui::Label::new(heading)
-                                .selectable(false)
-                                .sense(egui::Sense::click()),
-                        );
-                        if resp.clicked() {
-                            state.toggle(ui);
-                        }
-
-                        state.show_body_unindented(ui, |ui| {
-                            ui.separator();
-                            ui.code_editor(&mut text);
-                        });
-
-                        resp
+                    collapsing_frame(ui, heading, |ui| {
+                        ui.code_editor(&mut text);
                     });
                 }
             }
+
+            collapsing_frame(ui, "Template", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Prompt template to be passed into the model. It may include (optionally) a system message, a user's message and the response from the model. Note: syntax may be model specific. Templates use Go ");
+                    ui.style_mut().spacing.item_spacing.x = 0.0;
+                    const TEMPLATE_LINK: &str = "https://pkg.go.dev/text/template";
+                    ui.hyperlink_to("template syntax", TEMPLATE_LINK).on_hover_text(TEMPLATE_LINK);
+                    ui.label(". This overrides what is defined in the Modelfile. The default template is shown in the Template header.");
+                });
+                egui::Grid::new("set_template_variable_grid").striped(true).num_columns(2).show(ui, |ui| {
+                    ui.add(egui::Label::new(RichText::new("Variable").strong()).wrap(true));
+                    ui.add(egui::Label::new(RichText::new("Description").strong()).wrap(true));
+                    ui.end_row();
+
+                    ui.code("{{ .System }}");
+                    ui.add(egui::Label::new("The system message used to specify custom behavior.").wrap(true));
+                    ui.end_row();
+
+                    ui.code("{{ .Prompt }}");
+                    ui.add(egui::Label::new("The user prompt message.").wrap(true));
+                    ui.end_row();
+
+                    ui.code("{{ .Response }}");
+                    ui.add(egui::Label::new("The response from the model. When generating a response, text after this variable is omitted.").wrap(true));
+                    ui.end_row();
+                });
+
+                const DOCS_LINK: &str =
+                    "https://github.com/ollama/ollama/blob/main/docs/modelfile.md#template";
+                ui.hyperlink_to("Ollama Docmentation", DOCS_LINK)
+                    .on_hover_text(DOCS_LINK);
+
+                let mut enabled = self.template.is_some();
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut enabled, "Override");
+                    ui.label("(overrides the template set in the Modelfile)");
+                });
+                if !enabled {
+                    self.template = None;
+                } else if self.template.is_none() {
+                    self.template = Some(String::new());
+                }
+
+                ui.add_enabled_ui(self.template.is_some(), |ui| {
+                    if let Some(ref mut template) = self.template {
+                        ui.add(
+                            egui::TextEdit::multiline(template)
+                                .hint_text(TEMPLATE_HINT_TEXT)
+                                .code_editor(),
+                        );
+                    }
+                });
+
+                ui.separator();
+                ui.label("Modelfile template:");
+                ui.code_editor(&mut info.template.as_str());
+            });
         } else {
             request_info(RequestInfoType::ModelInfo(&self.selected.name));
             ui.horizontal(|ui| {
@@ -372,7 +387,7 @@ impl ModelSettings {
         name: &str,
         doc: &str,
     ) {
-        ui.collapsing(name, |ui| {
+        collapsing_frame(ui, name, |ui: &mut egui::Ui| {
             ui.label(doc);
             let mut enabled = val.is_some();
             ui.checkbox(&mut enabled, "Enable");
@@ -421,7 +436,7 @@ impl ModelSettings {
             *self = Self::default();
         }
 
-        ui.collapsing("Mirostat", |ui| {
+        collapsing_frame(ui, "Mirostat", |ui| {
             ui.label("Enable Mirostat sampling for controlling perplexity.");
 
             let mut enabled = self.mirostat.is_some();
@@ -489,7 +504,7 @@ impl ModelSettings {
         Self::edit_numeric(ui, &mut self.temperature, 0.8, 0.1, "Temperature", "The temperature of the model. Increasing the temperature will make the model answer more creatively.");
         Self::edit_numeric(ui, &mut self.seed, 0, 1.0, "Seed", "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.");
 
-        ui.collapsing("Stop Sequence", |ui| {
+        collapsing_frame(ui, "Stop Sequence", |ui| {
             ui.label(
                 "Sets the stop sequences to use. \
                 When this pattern is encountered the LLM will stop generating text and return.",

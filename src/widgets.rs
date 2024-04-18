@@ -75,7 +75,9 @@ fn collapsing_frame<R>(
 
             state.show_body_unindented(ui, |ui| {
                 ui.separator();
-                show(ui);
+                ui.vertical(|ui| {
+                    show(ui);
+                });
             });
 
             resp

@@ -4,6 +4,7 @@ use sessions::Sessions;
 
 mod chat;
 mod easymark;
+mod icons;
 mod sessions;
 mod style;
 mod widgets;

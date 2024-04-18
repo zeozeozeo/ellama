@@ -140,7 +140,7 @@ impl ModelPicker {
         }
 
         ui.collapsing("Settings", |ui| {
-            self.settings.show(ui);
+            self.settings.show(ui, &mut self.template);
         });
 
         ui.separator();
@@ -431,9 +431,10 @@ impl ModelSettings {
         });
     }
 
-    fn show(&mut self, ui: &mut egui::Ui) {
+    fn show(&mut self, ui: &mut egui::Ui, template: &mut Option<String>) {
         if ui.button("Reset Settings").clicked() {
             *self = Self::default();
+            *template = None;
         }
 
         collapsing_frame(ui, "Mirostat", |ui| {

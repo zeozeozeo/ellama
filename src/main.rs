@@ -5,6 +5,7 @@ use sessions::Sessions;
 mod chat;
 mod easymark;
 mod sessions;
+mod style;
 mod widgets;
 
 const TITLE: &str = "Ellama";
@@ -41,8 +42,7 @@ impl Default for Ellama {
 impl Ellama {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // change visuals
-        cc.egui_ctx
-            .style_mut(|s| s.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand));
+        style::set_style(&cc.egui_ctx);
 
         // try to restore app
         log::debug!(

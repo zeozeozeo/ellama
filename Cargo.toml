@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = { version = "0.27", features = ["persistence"] }
+eframe = { version = "0.27", default-features = false, features = ["persistence", "x11", "wayland", "accesskit", "glow"] }
 egui_commonmark = { git = "https://github.com/lampsitter/egui_commonmark.git", features = ["better_syntax_highlighting"] }
 env_logger = "0.11"
 flowync = { version = "5.1", features = ["compact"] }

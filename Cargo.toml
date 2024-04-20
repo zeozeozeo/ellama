@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 eframe = { version = "0.27", default-features = false, features = ["persistence", "x11", "wayland", "accesskit", "glow"] }
-egui_commonmark = { git = "https://github.com/lampsitter/egui_commonmark.git", features = ["better_syntax_highlighting"] }
+egui_commonmark = { git = "https://github.com/zeozeozeo/egui_commonmark.git", branch = "twemoji", features = ["better_syntax_highlighting", "svg"] }
 env_logger = "0.11"
 flowync = { version = "5.1", features = ["compact"] }
 log = "0.4.21"
@@ -27,3 +27,4 @@ anyhow = "1"
 serde_json = "1"
 egui-notify = "0.14.0"
 ron = "0.8.1"
+fastrand = "2.0.2"

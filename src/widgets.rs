@@ -380,6 +380,11 @@ impl From<ModelSettings> for GenerationOptions {
     }
 }
 
+#[inline]
+pub fn f64_range(range: std::ops::RangeInclusive<f64>) -> f64 {
+    fastrand::f64() * (range.end() - range.start()) + range.start()
+}
+
 impl ModelSettings {
     fn edit_numeric<N: Numeric>(
         ui: &mut egui::Ui,
@@ -420,6 +425,13 @@ impl ModelSettings {
                         .clicked()
                     {
                         *val = Some(N::MIN);
+                    }
+                    if ui
+                        .button("rand")
+                        .on_hover_text("Set random value")
+                        .clicked()
+                    {
+                        *val = Some(N::from_f64(f64_range(N::MIN.to_f64()..=N::MAX.to_f64())));
                     }
                     if ui
                         .button("reset")

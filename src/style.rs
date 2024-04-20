@@ -28,5 +28,6 @@ pub fn set_style(ctx: &egui::Context) {
         .or_default()
         .insert(0, "JetBrainsMono-Regular".to_owned());
 
+    ctx.set_zoom_factor(1.08);
     ctx.set_fonts(fonts);
 }

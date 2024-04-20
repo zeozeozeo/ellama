@@ -16,12 +16,6 @@ pub struct Style {
 
     /// self.strong* (emphasized, e.g. bold)
     pub strong: bool,
-
-    /// $small$
-    pub small: bool,
-
-    /// ^raised^
-    pub raised: bool,
 }
 
 /// Highlight easymark, memoizing previous output to save CPU.
@@ -106,24 +100,6 @@ pub fn highlight_easymark(egui_style: &egui::Style, mut text: &str) -> egui::tex
                 skip = 0;
             }
             style.strong ^= true;
-        } else if text.starts_with('$') {
-            skip = 1;
-            if style.small {
-                // Include the character that is ending this style:
-                job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
-                text = &text[skip..];
-                skip = 0;
-            }
-            style.small ^= true;
-        } else if text.starts_with('^') {
-            skip = 1;
-            if style.raised {
-                // Include the character that is ending this style:
-                job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
-                text = &text[skip..];
-                skip = 0;
-            }
-            style.raised ^= true;
         } else {
             skip = 0;
         }
@@ -157,7 +133,7 @@ pub fn highlight_easymark(egui_style: &egui::Style, mut text: &str) -> egui::tex
 }
 
 fn format_from_style(egui_style: &egui::Style, emark_style: &Style) -> egui::text::TextFormat {
-    use egui::{Align, Color32, TextStyle};
+    use egui::{Color32, TextStyle};
 
     let color = if emark_style.strong || emark_style.heading {
         egui_style.visuals.strong_text_color()
@@ -171,8 +147,6 @@ fn format_from_style(egui_style: &egui::Style, emark_style: &Style) -> egui::tex
         TextStyle::Heading
     } else if emark_style.code {
         TextStyle::Monospace
-    } else if emark_style.small | emark_style.raised {
-        TextStyle::Small
     } else {
         TextStyle::Body
     };
@@ -183,17 +157,10 @@ fn format_from_style(egui_style: &egui::Style, emark_style: &Style) -> egui::tex
         Color32::TRANSPARENT
     };
 
-    let valign = if emark_style.raised {
-        Align::TOP
-    } else {
-        Align::BOTTOM
-    };
-
     egui::text::TextFormat {
         font_id: text_style.resolve(egui_style),
         color,
         background,
-        valign,
         ..Default::default()
     }
 }

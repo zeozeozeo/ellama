@@ -447,6 +447,9 @@ impl Chat {
                 .take(MAX_SUMMARY_LENGTH)
                 .enumerate()
                 .map(|(i, c)| {
+                    if c == '\n' {
+                        return ' ';
+                    }
                     if i == 0 {
                         c.to_uppercase().next().unwrap()
                     } else {

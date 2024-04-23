@@ -526,6 +526,7 @@ impl Sessions {
                 egui::Label::new(summary).selectable(false)
             });
             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
                 if ui
                     .add(
                         egui::Button::new("❌")
@@ -547,7 +548,7 @@ impl Sessions {
                 }
                 if ui
                     .add(
-                        egui::Button::new("Edit")
+                        egui::Button::new("\u{270f}")
                             .small()
                             .fill(Color32::TRANSPARENT)
                             .stroke(Stroke::NONE),

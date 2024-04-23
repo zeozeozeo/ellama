@@ -58,20 +58,30 @@ pub fn show_images(ui: &mut egui::Ui, images: &mut Vec<PathBuf>, mutate: bool) {
             })
             .response;
 
-        if !mutate {
+        if !mutate || showing_x {
             return true;
         }
 
         if let Some(pos) = pointer_pos {
-            if !showing_x && resp.rect.expand(8.0).contains(pos) {
+            if resp.rect.expand(8.0).contains(pos) {
                 showing_x = true;
 
                 // render an ❌ in a red circle
                 let top = resp.rect.right_top();
+                let x_rect = Rect::from_center_size(top, vec2(16.0, 16.0));
+                let contains_pointer = x_rect.contains(pos);
+
                 ui.painter()
                     .circle_filled(top, 10.0, ui.visuals().window_fill);
-                ui.painter()
-                    .circle_filled(top, 8.0, ui.visuals().error_fg_color);
+                ui.painter().circle_filled(
+                    top,
+                    8.0,
+                    if contains_pointer {
+                        ui.visuals().gray_out(ui.visuals().error_fg_color)
+                    } else {
+                        ui.visuals().error_fg_color
+                    },
+                );
                 ui.painter().line_segment(
                     [top - vec2(3.0, 3.0), top + vec2(3.0, 3.0)],
                     Stroke::new(2.0, Color32::WHITE),
@@ -81,8 +91,7 @@ pub fn show_images(ui: &mut egui::Ui, images: &mut Vec<PathBuf>, mutate: bool) {
                     Stroke::new(2.0, Color32::WHITE),
                 );
 
-                let x_rect = Rect::from_center_size(top, vec2(16.0, 16.0));
-                if x_rect.contains(pos) && ui.input(|i| i.pointer.primary_clicked()) {
+                if contains_pointer && ui.input(|i| i.pointer.primary_clicked()) {
                     return false;
                 }
             }

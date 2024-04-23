@@ -4,6 +4,7 @@ use sessions::Sessions;
 
 mod chat;
 mod easymark;
+mod image;
 mod sessions;
 mod style;
 mod widgets;
@@ -43,6 +44,7 @@ impl Ellama {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // change visuals
         style::set_style(&cc.egui_ctx);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
 
         // try to restore app
         log::debug!(

@@ -1,11 +1,12 @@
 use crate::{
-    chat::{Chat, ChatExportFormat},
+    chat::{Chat, ChatAction, ChatExportFormat},
     widgets::{ModelPicker, RequestInfoType},
 };
 use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
 use egui_modal::{Icon, Modal};
 use egui_notify::{Toast, Toasts};
+use egui_twemoji::EmojiLabel;
 use egui_virtual_list::VirtualList;
 use flowync::{CompactFlower, CompactHandle};
 use ollama_rs::{
@@ -13,7 +14,7 @@ use ollama_rs::{
     Ollama,
 };
 use parking_lot::RwLock;
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
 use tts::Tts;
 
 #[derive(Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -26,9 +27,11 @@ enum SessionTab {
 pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 
 enum OllamaResponse {
+    Ignore,
     Models(Vec<LocalModel>),
     ModelInfo { name: String, info: ModelInfo },
     Toast(Toast),
+    Images { id: usize, files: Vec<PathBuf> },
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -162,6 +165,30 @@ async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaF
     }
 }
 
+async fn pick_images(id: usize, handle: &OllamaFlowerHandle) {
+    let Some(files) = rfd::AsyncFileDialog::new()
+        .add_filter(
+            "Image",
+            &[
+                "avif", "bmp", "dds", "ff", "gif", "hdr", "ico", "jpeg", "jpg", "exr", "png",
+                "pnm", "qoi", "tga", "tiff", "webp",
+            ],
+        )
+        .pick_files()
+        .await
+    else {
+        handle.success(OllamaResponse::Ignore);
+        return;
+    };
+
+    log::info!("selected {} image(s)", files.len());
+
+    handle.success(OllamaResponse::Images {
+        id,
+        files: files.iter().map(|f| f.path().to_path_buf()).collect(),
+    });
+}
+
 impl Sessions {
     pub fn new(ollama: Ollama) -> Self {
         let mut sessions = Self::default();
@@ -247,13 +274,24 @@ impl Sessions {
             ctx.request_repaint();
         }
 
-        self.chats[self.selected_chat].show(
+        let action = self.chats[self.selected_chat].show(
             ctx,
             ollama,
             self.tts.clone(),
             prev_is_speaking && !self.is_speaking, // stopped_talking
             &mut self.commonmark_cache,
         );
+
+        match action {
+            ChatAction::None => (),
+            ChatAction::PickImages { id } => {
+                let handle = self.flower.handle();
+                tokio::spawn(async move {
+                    handle.activate();
+                    pick_images(id, &handle).await;
+                });
+            }
+        }
 
         // display toast queue
         self.toasts.show(ctx);
@@ -407,6 +445,7 @@ impl Sessions {
     fn poll_ollama_flower(&mut self, modal: &Modal) {
         self.flower.extract(|()| ()).finalize(|resp| {
             match resp {
+                Ok(OllamaResponse::Ignore) => (),
                 Ok(OllamaResponse::Models(models)) => {
                     self.models = models;
                     if !self.model_picker.has_selection() {
@@ -429,6 +468,12 @@ impl Sessions {
                 }
                 Ok(OllamaResponse::Toast(toast)) => {
                     self.toasts.add(toast);
+                }
+                Ok(OllamaResponse::Images { id, files }) => {
+                    if let Some(chat) = self.chats.iter_mut().find(|c| c.id() == id) {
+                        log::debug!("adding {} image(s)", files.len());
+                        chat.images.extend(files);
+                    }
                 }
                 Err(flowync::error::Compact::Suppose(e)) => {
                     modal
@@ -518,13 +563,16 @@ impl Sessions {
         let summary = chat.summary.clone();
 
         ui.horizontal(|ui| {
-            ui.add(if summary.is_empty() {
-                egui::Label::new("New Chat")
-                    .selectable(false)
-                    .truncate(true)
+            if summary.is_empty() {
+                ui.add(
+                    egui::Label::new("New Chat")
+                        .selectable(false)
+                        .truncate(true),
+                );
             } else {
-                egui::Label::new(summary).selectable(false)
-            });
+                EmojiLabel::new(summary).selectable(false).show(ui);
+            }
+
             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 if ui

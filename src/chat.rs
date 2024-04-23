@@ -2,7 +2,7 @@ use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets:
 use anyhow::{Context, Result};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
-    Pos2, Rect, Stroke,
+    Pos2, Rect, Rounding, Stroke,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -17,6 +17,7 @@ use ollama_rs::{
 };
 use std::{
     io::Write,
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -47,6 +48,7 @@ pub struct Message {
     is_error: bool,
     #[serde(skip)]
     is_speaking: bool,
+    images: Vec<PathBuf>,
 }
 
 impl Default for Message {
@@ -61,6 +63,7 @@ impl Default for Message {
             is_error: false,
             is_speaking: false,
             model_name: String::new(),
+            images: Vec::new(),
         }
     }
 }
@@ -100,12 +103,13 @@ fn make_short_name(name: &str) -> String {
 
 impl Message {
     #[inline]
-    fn user(content: String, model_name: String) -> Self {
+    fn user(content: String, model_name: String, images: Vec<PathBuf>) -> Self {
         Self {
             content,
             role: Role::User,
             is_generating: false,
             model_name,
+            images,
             ..Default::default()
         }
     }
@@ -155,7 +159,8 @@ impl Message {
 
         // for some reason commonmark creates empty space above it when created,
         // compensate for that
-        if !self.content.is_empty() && !self.is_error {
+        let is_commonmark = !self.content.is_empty() && !self.is_error;
+        if is_commonmark {
             ui.add_space(-24.0);
         }
 
@@ -191,8 +196,20 @@ impl Message {
             }
         });
 
+        // images
+        if !self.images.is_empty() {
+            if is_commonmark {
+                ui.add_space(-8.0);
+            }
+            ui.horizontal(|ui| {
+                ui.add_space(message_offset);
+                show_images(ui, &self.images);
+            });
+            ui.add_space(8.0);
+        }
+
         // copy buttons and such
-        let shift_held = ui.input(|i| i.modifiers.shift);
+        let shift_held = !ui.ctx().wants_keyboard_input() && ui.input(|i| i.modifiers.shift);
         if !self.is_generating
             && !self.content.is_empty()
             && (!self.is_user() || shift_held)
@@ -269,6 +286,7 @@ pub struct Chat {
     #[serde(skip)]
     virtual_list: VirtualList,
     pub model_picker: ModelPicker,
+    pub images: Vec<PathBuf>,
 }
 
 impl Default for Chat {
@@ -285,6 +303,7 @@ impl Default for Chat {
             stop_generating: Arc::new(AtomicBool::new(false)),
             virtual_list: VirtualList::new(),
             model_picker: ModelPicker::default(),
+            images: Vec::new(),
         }
     }
 }
@@ -441,6 +460,25 @@ fn make_summary(prompt: &str) -> String {
     summary
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ChatAction {
+    None,
+    PickImages { id: usize },
+}
+
+fn show_images(ui: &mut egui::Ui, images: &[PathBuf]) {
+    const MAX_IMAGE_HEIGHT: f32 = 128.0;
+    for image_path in images {
+        let path_string = image_path.display().to_string();
+        ui.add(
+            egui::Image::new(format!("file://{path_string}"))
+                .max_height(MAX_IMAGE_HEIGHT)
+                .fit_to_original_size(1.0),
+        )
+        .on_hover_text(path_string);
+    }
+}
+
 impl Chat {
     #[inline]
     pub fn new(id: usize, model_picker: ModelPicker) -> Self {
@@ -449,6 +487,11 @@ impl Chat {
             model_picker,
             ..Default::default()
         }
+    }
+
+    #[inline]
+    pub fn id(&self) -> usize {
+        self.flower.id()
     }
 
     fn send_message(&mut self, ollama: &Ollama) {
@@ -462,8 +505,11 @@ impl Chat {
 
         let prompt = self.chatbox.trim_end().to_string();
         let model_name = self.model_picker.selected.name.clone();
-        self.messages
-            .push(Message::user(prompt.clone(), model_name.clone()));
+        self.messages.push(Message::user(
+            prompt.clone(),
+            model_name.clone(),
+            self.images.clone(),
+        ));
 
         if self.summary.is_empty() {
             self.summary = make_summary(&prompt);
@@ -473,7 +519,17 @@ impl Chat {
         self.chatbox.clear();
 
         // push prompt to ollama context messages
-        self.context_messages.push(ChatMessage::user(prompt));
+        let mut message = ChatMessage::user(prompt);
+        if !self.images.is_empty() {
+            message.images = Some(
+                self.images
+                    .iter()
+                    .map(|i| crate::image::convert_image(i).unwrap())
+                    .collect(),
+            );
+            self.images.clear();
+        }
+        self.context_messages.push(message);
         let context_messages = self.context_messages.clone();
 
         // get ready for assistant response
@@ -511,7 +567,8 @@ impl Chat {
         is_max_height: bool,
         is_generating: bool,
         ollama: &Ollama,
-    ) {
+    ) -> ChatAction {
+        let mut action = ChatAction::None;
         if let Some(idx) = self.retry_message_idx.take() {
             self.chatbox = self.messages[idx].content.clone();
             self.messages.remove(idx + 1);
@@ -522,18 +579,50 @@ impl Chat {
         if is_max_height {
             ui.add_space(8.0);
         }
+
+        let images_height = if !self.images.is_empty() {
+            ui.add_space(8.0);
+            let height = egui::ScrollArea::horizontal()
+                .show(ui, |ui| {
+                    let height = ui
+                        .horizontal(|ui| {
+                            show_images(ui, &self.images);
+                        })
+                        .response
+                        .rect
+                        .height();
+                    ui.add_space(8.0);
+                    height
+                })
+                .inner;
+            height + 16.0
+        } else {
+            0.0
+        };
+
         ui.horizontal_centered(|ui| {
-            ui.add_enabled_ui(!is_generating, |ui| {
-                if !is_max_height
-                    && ui
-                        .button("Send")
-                        .on_disabled_hover_text("Please wait…")
-                        .clicked()
-                    && !is_generating
-                {
-                    self.send_message(ollama);
-                }
-            });
+            // ui.add_enabled_ui(!is_generating, |ui| {
+            //     if !is_max_height
+            //         && ui
+            //             .button("▶ Send")
+            //             .on_disabled_hover_text("Please wait…")
+            //             .clicked()
+            //         && !is_generating
+            //     {
+            //         self.send_message(ollama);
+            //     }
+            // });
+            if ui
+                .add(
+                    egui::Button::new("➕")
+                        .min_size(vec2(32.0, 32.0))
+                        .rounding(Rounding::same(f32::INFINITY)),
+                )
+                .on_hover_text_at_pointer("Pick Images")
+                .clicked()
+            {
+                action = ChatAction::PickImages { id: self.id() };
+            }
             ui.with_layout(
                 Layout::left_to_right(Align::Center).with_main_justify(true),
                 |ui| {
@@ -554,7 +643,8 @@ impl Chat {
                         .show(ui)
                         .response
                         .rect
-                        .height();
+                        .height()
+                        + images_height;
                     if !is_generating
                         && ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none())
                     {
@@ -563,9 +653,12 @@ impl Chat {
                 },
             );
         });
+
         if is_max_height {
             ui.add_space(8.0);
         }
+
+        action
     }
 
     #[inline]
@@ -664,6 +757,7 @@ impl Chat {
             .stick_to_bottom(true)
             .auto_shrink(false)
             .show(ui, |ui| {
+                ui.add_space(16.0);
                 self.virtual_list
                     .ui_custom_layout(ui, self.messages.len(), |ui, index| {
                         let Some(message) = self.messages.get_mut(index) else {
@@ -689,18 +783,19 @@ impl Chat {
         tts: SharedTts,
         stopped_speaking: bool,
         commonmark_cache: &mut CommonMarkCache,
-    ) {
+    ) -> ChatAction {
         let avail = ctx.available_rect();
         let max_height = avail.height() * 0.4 + 24.0;
         let chatbox_panel_height = self.chatbox_height + 24.0;
         let actual_chatbox_panel_height = chatbox_panel_height.min(max_height);
         let is_generating = self.flower_active();
+        let mut action = ChatAction::None;
 
         egui::TopBottomPanel::bottom("chatbox_panel")
             .exact_height(actual_chatbox_panel_height)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.show_chatbox(
+                    action = self.show_chatbox(
                         ui,
                         chatbox_panel_height >= max_height,
                         is_generating,
@@ -718,7 +813,6 @@ impl Chat {
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
-                ui.add_space(16.0);
                 if let Some(new) = self.show_chat_scrollarea(ui, commonmark_cache, tts) {
                     new_speaker = Some(new);
                 }
@@ -751,5 +845,7 @@ impl Chat {
                 msg.is_speaking = false;
             }
         }
+
+        action
     }
 }

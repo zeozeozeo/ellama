@@ -11,10 +11,10 @@ egui_commonmark = { git = "https://github.com/zeozeozeo/egui_commonmark.git", br
 env_logger = "0.11"
 flowync = { version = "5.1", features = ["compact"] }
 log = "0.4.21"
-ollama-rs = { git = "https://github.com/pepperoni21/ollama-rs.git", features = ["rustls", "stream"] }
+ollama-rs = { version = "0.1.9", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
-egui-modal = { git = "https://github.com/zeozeozeo/egui-modal.git", branch = "forget-state" }
+egui-modal = "0.3.6"
 tts = "0.26"
 parking_lot = "0.12"
 bytesize = "1.3"
@@ -28,3 +28,7 @@ serde_json = "1"
 egui-notify = "0.14.0"
 ron = "0.8.1"
 fastrand = "2.0.2"
+egui-twemoji = "0.3.0"
+image = "0.24"
+egui_extras = { version = "0.27.2", features = ["file", "image"] }
+base64-stream = "3.0.1"

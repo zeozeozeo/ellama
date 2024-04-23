@@ -110,7 +110,7 @@ pub fn highlight_easymark(egui_style: &egui::Style, mut text: &str) -> egui::tex
             .find('\n')
             .map_or_else(|| text.len(), |i| (skip + i + 1));
         let end = text[skip..]
-            .find(&['*', '`', '~', '_', '/', '$', '^', '\\', '<', '['][..])
+            .find(&['*', '`', '~', '_', '/', '\\', '<', '['][..])
             .map_or_else(|| text.len(), |i| (skip + i).max(1));
 
         if line_end <= end {

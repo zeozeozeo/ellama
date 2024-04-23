@@ -1,6 +1,6 @@
 use anyhow::Result;
 use base64_stream::ToBase64Reader;
-use eframe::egui::{self, Layout, RichText};
+use eframe::egui::{self, vec2, Color32, Rect, RichText, Stroke};
 use image::ImageFormat;
 use ollama_rs::generation::images::Image;
 use std::{
@@ -35,22 +35,59 @@ pub fn convert_image(path: &Path) -> Result<Image> {
     Ok(Image::from_base64(&base64))
 }
 
-pub fn show_images(ui: &mut egui::Ui, images: &[PathBuf]) {
+pub fn show_images(ui: &mut egui::Ui, images: &mut Vec<PathBuf>, mutate: bool) {
     const MAX_IMAGE_HEIGHT: f32 = 128.0;
-    for image_path in images {
-        let path_string = image_path.display().to_string();
-        ui.group(|ui| {
-            ui.vertical(|ui| {
-                ui.add(
-                    egui::Image::new(format!("file://{path_string}"))
-                        .max_height(MAX_IMAGE_HEIGHT)
-                        .fit_to_original_size(1.0),
-                )
-                .on_hover_text(path_string);
+    let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+    let mut showing_x = false;
 
-                let file_name = image_path.file_name().unwrap_or_default().to_string_lossy();
-                ui.add(egui::Label::new(RichText::new(file_name).small()).truncate(true));
-            });
-        });
-    }
+    images.retain_mut(|image_path| {
+        let path_string = image_path.display().to_string();
+        let resp = ui
+            .group(|ui| {
+                ui.vertical(|ui| {
+                    ui.add(
+                        egui::Image::new(format!("file://{path_string}"))
+                            .max_height(MAX_IMAGE_HEIGHT)
+                            .fit_to_original_size(1.0),
+                    )
+                    .on_hover_text(path_string);
+
+                    let file_name = image_path.file_name().unwrap_or_default().to_string_lossy();
+                    ui.add(egui::Label::new(RichText::new(file_name).small()).truncate(true));
+                });
+            })
+            .response;
+
+        if !mutate {
+            return true;
+        }
+
+        if let Some(pos) = pointer_pos {
+            if !showing_x && resp.rect.expand(8.0).contains(pos) {
+                showing_x = true;
+
+                // render an ❌ in a red circle
+                let top = resp.rect.right_top();
+                ui.painter()
+                    .circle_filled(top, 10.0, ui.visuals().window_fill);
+                ui.painter()
+                    .circle_filled(top, 8.0, ui.visuals().error_fg_color);
+                ui.painter().line_segment(
+                    [top - vec2(3.0, 3.0), top + vec2(3.0, 3.0)],
+                    Stroke::new(2.0, Color32::WHITE),
+                );
+                ui.painter().line_segment(
+                    [top - vec2(3.0, -3.0), top + vec2(3.0, -3.0)],
+                    Stroke::new(2.0, Color32::WHITE),
+                );
+
+                let x_rect = Rect::from_center_size(top, vec2(16.0, 16.0));
+                if x_rect.contains(pos) && ui.input(|i| i.pointer.primary_clicked()) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    });
 }

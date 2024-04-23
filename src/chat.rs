@@ -203,7 +203,7 @@ impl Message {
             }
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
-                crate::image::show_images(ui, &self.images);
+                crate::image::show_images(ui, &mut self.images, false);
             });
             ui.add_space(8.0);
         }
@@ -573,7 +573,7 @@ impl Chat {
                 .show(ui, |ui| {
                     let height = ui
                         .horizontal(|ui| {
-                            crate::image::show_images(ui, &self.images);
+                            crate::image::show_images(ui, &mut self.images, true);
                         })
                         .response
                         .rect

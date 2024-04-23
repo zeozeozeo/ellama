@@ -203,7 +203,7 @@ impl Message {
             }
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
-                show_images(ui, &self.images);
+                crate::image::show_images(ui, &self.images);
             });
             ui.add_space(8.0);
         }
@@ -466,19 +466,6 @@ pub enum ChatAction {
     PickImages { id: usize },
 }
 
-fn show_images(ui: &mut egui::Ui, images: &[PathBuf]) {
-    const MAX_IMAGE_HEIGHT: f32 = 128.0;
-    for image_path in images {
-        let path_string = image_path.display().to_string();
-        ui.add(
-            egui::Image::new(format!("file://{path_string}"))
-                .max_height(MAX_IMAGE_HEIGHT)
-                .fit_to_original_size(1.0),
-        )
-        .on_hover_text(path_string);
-    }
-}
-
 impl Chat {
     #[inline]
     pub fn new(id: usize, model_picker: ModelPicker) -> Self {
@@ -586,12 +573,11 @@ impl Chat {
                 .show(ui, |ui| {
                     let height = ui
                         .horizontal(|ui| {
-                            show_images(ui, &self.images);
+                            crate::image::show_images(ui, &self.images);
                         })
                         .response
                         .rect
                         .height();
-                    ui.add_space(8.0);
                     height
                 })
                 .inner;

@@ -29,6 +29,6 @@ egui-notify = "0.14.0"
 ron = "0.8.1"
 fastrand = "2.0.2"
 egui-twemoji = "0.3.0"
-image = "0.24"
+image = "0.25"
 egui_extras = { version = "0.27.2", features = ["file", "image"] }
 base64-stream = "3.0.1"

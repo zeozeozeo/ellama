@@ -192,7 +192,12 @@ impl Message {
         });
 
         // copy buttons and such
-        if !self.is_generating && !self.content.is_empty() && !self.is_user() && !self.is_error {
+        let shift_held = ui.input(|i| i.modifiers.shift);
+        if !self.is_generating
+            && !self.content.is_empty()
+            && (!self.is_user() || shift_held)
+            && !self.is_error
+        {
             ui.add_space(-12.0);
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
@@ -416,6 +421,26 @@ pub async fn export_messages(
     )))
 }
 
+fn make_summary(prompt: &str) -> String {
+    const MAX_SUMMARY_LENGTH: usize = 24;
+    let mut summary = String::with_capacity(MAX_SUMMARY_LENGTH);
+    for (i, ch) in prompt.chars().enumerate() {
+        if i >= MAX_SUMMARY_LENGTH {
+            summary.push('…');
+            break;
+        }
+        if ch == '\n' {
+            break;
+        }
+        if i == 0 {
+            summary += &ch.to_uppercase().to_string();
+        } else {
+            summary.push(ch);
+        }
+    }
+    summary
+}
+
 impl Chat {
     #[inline]
     pub fn new(id: usize, model_picker: ModelPicker) -> Self {
@@ -440,26 +465,8 @@ impl Chat {
         self.messages
             .push(Message::user(prompt.clone(), model_name.clone()));
 
-        const MAX_SUMMARY_LENGTH: usize = 24;
         if self.summary.is_empty() {
-            self.summary = prompt
-                .chars()
-                .take(MAX_SUMMARY_LENGTH)
-                .enumerate()
-                .map(|(i, c)| {
-                    if c == '\n' {
-                        return ' ';
-                    }
-                    if i == 0 {
-                        c.to_uppercase().next().unwrap()
-                    } else {
-                        c
-                    }
-                })
-                .collect::<String>();
-            if prompt.len() > MAX_SUMMARY_LENGTH {
-                self.summary += "…";
-            }
+            self.summary = make_summary(&prompt);
         }
 
         // clear chatbox

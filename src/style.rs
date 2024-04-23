@@ -1,4 +1,4 @@
-use eframe::egui;
+use eframe::egui::{self, FontTweak};
 
 pub fn set_style(ctx: &egui::Context) {
     ctx.style_mut(|s| {
@@ -17,17 +17,46 @@ pub fn set_style(ctx: &egui::Context) {
         "JetBrainsMono-Regular".to_owned(),
         egui::FontData::from_static(include_bytes!("../assets/JetBrainsMono-Regular.ttf")),
     );
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .insert(0, "Inter-Regular".to_owned());
-    fonts
-        .families
-        .entry(egui::FontFamily::Monospace)
-        .or_default()
-        .insert(0, "JetBrainsMono-Regular".to_owned());
+    fonts.font_data.insert(
+        "NotoEmoji-Regular".to_owned(),
+        egui::FontData::from_static(include_bytes!("../assets/NotoEmoji-Regular.ttf")).tweak(
+            FontTweak {
+                scale: 0.81, // make it smaller
+                ..Default::default()
+            },
+        ),
+    );
+    fonts.font_data.insert(
+        "emoji-icon-font".to_owned(),
+        egui::FontData::from_static(include_bytes!("../assets/emoji-icon-font.ttf")).tweak(
+            FontTweak {
+                scale: 0.88, // make it smaller
 
-    ctx.set_zoom_factor(1.08);
+                // probably not correct, but this does make texts look better
+                y_offset_factor: 0.11, // move glyphs down to better align with common fonts
+                baseline_offset_factor: -0.11, // ...now the entire row is a bit down so shift it back
+                ..Default::default()
+            },
+        ),
+    );
+
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec![
+            "Inter-Regular".to_owned(),
+            "NotoEmoji-Regular".to_owned(),
+            "emoji-icon-font".to_owned(),
+        ],
+    );
+    fonts.families.insert(
+        egui::FontFamily::Monospace,
+        vec![
+            "JetBrainsMono-Regular".to_owned(),
+            "NotoEmoji-Regular".to_owned(),
+            "emoji-icon-font".to_owned(),
+        ],
+    );
+
+    ctx.set_zoom_factor(1.15);
     ctx.set_fonts(fonts);
 }

@@ -935,6 +935,7 @@ impl Chat {
                 });
                 egui::Grid::new("suggestions_grid")
                     .num_columns(3)
+                    .spacing(vec2(6.0, 6.0))
                     .show(ui, |ui| {
                         widgets::suggestion(ui, "Tell me a fun fact", "about the Roman empire");
                         widgets::suggestion(

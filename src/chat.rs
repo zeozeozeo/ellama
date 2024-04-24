@@ -11,6 +11,7 @@ use flowync::{error::Compact, CompactFlower, CompactHandle};
 use ollama_rs::{
     generation::{
         chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
+        images::Image,
         options::GenerationOptions,
     },
     Ollama,
@@ -205,14 +206,14 @@ impl Message {
                 let textedit = ui.add(
                     egui::TextEdit::multiline(prepend_buf).hint_text("Prepend text to response…"),
                 );
-                let mut cancel_prepend = |clear: bool| {
-                    self.is_prepending = false;
-                    if clear {
+                macro_rules! cancel_prepend {
+                    () => {
+                        self.is_prepending = false;
                         prepend_buf.clear();
-                    }
-                };
+                    };
+                }
                 if textedit.lost_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
-                    cancel_prepend(true);
+                    cancel_prepend!();
                 }
                 ui.vertical(|ui| {
                     if ui
@@ -223,13 +224,13 @@ impl Message {
                         )
                         .clicked()
                     {
-                        cancel_prepend(false);
-                        self.content.clear();
+                        self.content = prepend_buf.clone();
+                        self.is_prepending = false;
                         self.is_generating = true;
                         action = MessageAction::Regenerate(idx);
                     }
                     if ui.button("❌ Cancel").clicked() {
-                        cancel_prepend(true);
+                        cancel_prepend!();
                     }
                 });
             } else {
@@ -336,7 +337,6 @@ pub struct Chat {
     #[serde(skip)]
     chatbox_height: f32,
     pub messages: Vec<Message>,
-    pub context_messages: Vec<ChatMessage>,
     #[serde(skip)]
     flower: CompletionFlower,
     #[serde(skip)]
@@ -358,7 +358,6 @@ impl Default for Chat {
             chatbox: String::new(),
             chatbox_height: 0.0,
             messages: Vec::new(),
-            context_messages: Vec::new(),
             flower: CompletionFlower::new(1),
             retry_message_idx: None,
             summary: String::new(),
@@ -561,6 +560,36 @@ impl Chat {
         self.flower.id()
     }
 
+    fn convert_images(images: &[PathBuf]) -> Option<Vec<Image>> {
+        if !images.is_empty() {
+            Some(
+                images
+                    .iter()
+                    .map(|i| crate::image::convert_image(i).unwrap())
+                    .collect(),
+            )
+        } else {
+            None
+        }
+    }
+
+    fn get_context_messages(messages: &[Message]) -> Vec<ChatMessage> {
+        messages
+            .iter()
+            .map(|m| {
+                let mut message = match m.role {
+                    Role::User => ChatMessage::user(m.content.clone()),
+                    Role::Assistant => ChatMessage::assistant(m.content.clone()),
+                };
+
+                // TODO: don't do this each time!
+                message.images = Self::convert_images(&m.images);
+
+                message
+            })
+            .collect()
+    }
+
     fn send_message(&mut self, ollama: &Ollama) {
         // don't send empty messages
         if self.chatbox.is_empty() {
@@ -587,23 +616,18 @@ impl Chat {
 
         // push prompt to ollama context messages
         let mut message = ChatMessage::user(prompt);
-        if !self.images.is_empty() {
-            message.images = Some(
-                self.images
-                    .iter()
-                    .map(|i| crate::image::convert_image(i).unwrap())
-                    .collect(),
-            );
-            self.images.clear();
-        }
-        self.context_messages.push(message);
-        let context_messages = self.context_messages.clone();
+        message.images = Self::convert_images(&self.images);
+        self.images.clear(); // clear images after converting them
 
         // get ready for assistant response
         self.messages
             .push(Message::assistant(String::new(), model_name.clone()));
 
-        self.spawn_completion(ollama.clone(), context_messages, model_name);
+        self.spawn_completion(
+            ollama.clone(),
+            Self::get_context_messages(&self.messages),
+            model_name,
+        );
     }
 
     /// spawn a new task to generate the completion
@@ -640,19 +664,12 @@ impl Chat {
 
     fn regenerate_response(&mut self, ollama: &Ollama, idx: usize) {
         // remake context history to make the message we want to regenerate last
-        let mut messages = Vec::new();
-        self.context_messages[..idx].clone_into(&mut messages);
-        log::info!("messages: {messages:?}");
+        let mut messages = Self::get_context_messages(&self.messages[..idx]);
 
         // start with the prepended message and update it in the displayed messages
         messages.push(ChatMessage::assistant(self.prepend_buf.clone()));
         self.messages[idx].content = self.prepend_buf.clone();
         self.prepend_buf.clear();
-
-        log::info!(
-            "regenerating response, last msg: {}",
-            messages.last().unwrap().content
-        );
 
         // start completing the message
         self.spawn_completion(
@@ -763,7 +780,7 @@ impl Chat {
             .finalize(|result| {
                 if let Ok((idx, content)) = result {
                     let message = &mut self.messages[idx];
-                    message.content = content;
+                    message.content = content.clone();
                     message.is_generating = false;
                 } else if let Err(e) = result {
                     let (idx, msg) = match e {

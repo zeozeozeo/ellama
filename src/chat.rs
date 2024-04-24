@@ -220,7 +220,7 @@ impl Message {
                         .button("🔄 Regenerate")
                         .on_hover_text(
                             "Generate the response again, \
-                            the LLM will start after any prepended text.",
+                            the LLM will start after any prepended text",
                         )
                         .clicked()
                     {
@@ -576,7 +576,12 @@ impl Chat {
             Some(
                 images
                     .iter()
-                    .map(|i| crate::image::convert_image(i).unwrap())
+                    // TODO: handle errors
+                    .map(|i| {
+                        crate::image::convert_image(i)
+                            .map_err(|e| log::error!("failed to convert image: {e}"))
+                            .unwrap()
+                    })
                     .collect(),
             )
         } else {

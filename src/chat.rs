@@ -49,6 +49,7 @@ pub struct Message {
     #[serde(skip)]
     is_speaking: bool,
     images: Vec<PathBuf>,
+    is_prepending: bool,
 }
 
 impl Default for Message {
@@ -64,6 +65,7 @@ impl Default for Message {
             is_speaking: false,
             model_name: String::new(),
             images: Vec::new(),
+            is_prepending: false,
         }
     }
 }
@@ -136,6 +138,7 @@ impl Message {
         commonmark_cache: &mut CommonMarkCache,
         tts: SharedTts,
         idx: usize,
+        prepend_buf: &mut String,
     ) -> bool {
         // message role
         let message_offset = ui
@@ -159,7 +162,7 @@ impl Message {
 
         // for some reason commonmark creates empty space above it when created,
         // compensate for that
-        let is_commonmark = !self.content.is_empty() && !self.is_error;
+        let is_commonmark = !self.content.is_empty() && !self.is_error && !self.is_prepending;
         if is_commonmark {
             ui.add_space(-24.0);
         }
@@ -189,6 +192,31 @@ impl Message {
                         "Try to generate a response again. Make sure you have Ollama running",
                     )
                     .clicked();
+            } else if self.is_prepending {
+                let textedit = ui.add(
+                    egui::TextEdit::multiline(prepend_buf).hint_text("Prepend text to response…"),
+                );
+                let mut cancel_prepend = || {
+                    self.is_prepending = false;
+                    prepend_buf.clear();
+                };
+                if textedit.lost_focus() {
+                    if ui.input(|i| i.key_pressed(Key::Escape)) {
+                        cancel_prepend();
+                    }
+                }
+                ui.vertical(|ui| {
+                    if ui
+                        .button("🔄 Regenerate")
+                        .on_hover_text("Generate the response again, the LLM will start after any prepended text.")
+                        .clicked()
+                    {
+                        cancel_prepend();
+                    }
+                    if ui.button("❌ Cancel").clicked() {
+                        cancel_prepend();
+                    }
+                });
             } else {
                 CommonMarkViewer::new(format!("message_{idx}_commonmark"))
                     .max_image_width(Some(512))
@@ -206,6 +234,10 @@ impl Message {
                 crate::image::show_images(ui, &mut self.images, false);
             });
             ui.add_space(8.0);
+        }
+
+        if self.is_prepending {
+            return retry;
         }
 
         // copy buttons and such
@@ -255,6 +287,21 @@ impl Message {
                     self.is_speaking = true;
                     tts_control(tts, self.content.clone(), true);
                 }
+
+                if !self.is_user()
+                    && prepend_buf.is_empty()
+                    && ui
+                        .add(
+                            egui::Button::new("🔄")
+                                .small()
+                                .fill(egui::Color32::TRANSPARENT),
+                        )
+                        .on_hover_text("Regenerate")
+                        .clicked()
+                {
+                    prepend_buf.clear();
+                    self.is_prepending = true;
+                }
             });
             ui.add_space(8.0);
         }
@@ -287,6 +334,7 @@ pub struct Chat {
     virtual_list: VirtualList,
     pub model_picker: ModelPicker,
     pub images: Vec<PathBuf>,
+    prepend_buf: String,
 }
 
 impl Default for Chat {
@@ -304,6 +352,7 @@ impl Default for Chat {
             virtual_list: VirtualList::new(),
             model_picker: ModelPicker::default(),
             images: Vec::new(),
+            prepend_buf: String::new(),
         }
     }
 }
@@ -587,17 +636,6 @@ impl Chat {
         };
 
         ui.horizontal_centered(|ui| {
-            // ui.add_enabled_ui(!is_generating, |ui| {
-            //     if !is_max_height
-            //         && ui
-            //             .button("▶ Send")
-            //             .on_disabled_hover_text("Please wait…")
-            //             .clicked()
-            //         && !is_generating
-            //     {
-            //         self.send_message(ollama);
-            //     }
-            // });
             if ui
                 .add(
                     egui::Button::new("➕")
@@ -739,6 +777,7 @@ impl Chat {
         tts: SharedTts,
     ) -> Option<usize> {
         let mut new_speaker: Option<usize> = None;
+        let mut any_prepending = false;
         egui::ScrollArea::both()
             .stick_to_bottom(true)
             .auto_shrink(false)
@@ -750,9 +789,19 @@ impl Chat {
                             return 0;
                         };
                         let prev_speaking = message.is_speaking;
-                        if message.show(ui, commonmark_cache, tts.clone(), index) {
+                        if any_prepending && message.is_prepending {
+                            message.is_prepending = false;
+                        }
+                        if message.show(
+                            ui,
+                            commonmark_cache,
+                            tts.clone(),
+                            index,
+                            &mut self.prepend_buf,
+                        ) {
                             self.retry_message_idx = Some(index - 1);
                         }
+                        any_prepending |= message.is_prepending;
                         if !prev_speaking && message.is_speaking {
                             new_speaker = Some(index);
                         }

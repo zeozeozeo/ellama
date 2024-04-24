@@ -924,7 +924,12 @@ impl Chat {
         new_speaker
     }
 
-    fn show_suggestions(&mut self, ui: &mut egui::Ui) {
+    fn send_text(&mut self, ollama: &Ollama, text: &str) {
+        self.chatbox = text.to_owned();
+        self.send_message(ollama);
+    }
+
+    fn show_suggestions(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
         egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             widgets::centerer(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -937,17 +942,34 @@ impl Chat {
                     .num_columns(3)
                     .spacing(vec2(6.0, 6.0))
                     .show(ui, |ui| {
-                        widgets::suggestion(ui, "Tell me a fun fact", "about the Roman empire");
-                        widgets::suggestion(
+                        if widgets::suggestion(ui, "Tell me a fun fact", "about the Roman empire")
+                            .clicked()
+                        {
+                            self.send_text(ollama, "Tell me a fun fact about the Roman empire");
+                        }
+                        if widgets::suggestion(
                             ui,
                             "Show me a code snippet",
                             "of a web server in Rust",
-                        );
+                        )
+                        .clicked()
+                        {
+                            self.send_text(
+                                ollama,
+                                "Show me a code snippet of a web server in Rust",
+                            );
+                        }
                         widgets::dummy(ui);
                         ui.end_row();
 
-                        widgets::suggestion(ui, "Tell me a joke", "about crabs");
-                        widgets::suggestion(ui, "Give me ideas", "for a birthday present");
+                        if widgets::suggestion(ui, "Tell me a joke", "about crabs").clicked() {
+                            self.send_text(ollama, "Tell me a joke about crabs");
+                        }
+                        if widgets::suggestion(ui, "Give me ideas", "for a birthday present")
+                            .clicked()
+                        {
+                            self.send_text(ollama, "Give me ideas for a birthday present");
+                        }
                         widgets::dummy(ui);
                         ui.end_row();
                     });
@@ -993,7 +1015,7 @@ impl Chat {
             }))
             .show(ctx, |ui| {
                 if self.messages.is_empty() {
-                    self.show_suggestions(ui);
+                    self.show_suggestions(ui, ollama);
                 } else {
                     if let Some(new) = self.show_chat_scrollarea(ui, ollama, commonmark_cache, tts)
                     {

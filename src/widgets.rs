@@ -621,8 +621,8 @@ pub fn centerer(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
     });
 }
 
-pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) {
-    let resp = Frame::group(ui.style())
+pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) -> egui::Response {
+    let mut resp = Frame::group(ui.style())
         .rounding(Rounding::same(6.0))
         .stroke(Stroke::NONE)
         .fill(ui.style().visuals.faint_bg_color)
@@ -641,6 +641,19 @@ pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) {
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
+
+    // for some reason egui sets `Frame::group` to not sense clicks, so we
+    // have to hack it here
+    resp.clicked = resp.hovered()
+        && ui.input(|i| {
+            i.pointer.any_click()
+                && i.pointer
+                    .interact_pos()
+                    .map(|p| resp.rect.contains(p))
+                    .unwrap_or(false)
+        });
+
+    resp
 }
 
 pub fn dummy(ui: &mut egui::Ui) {

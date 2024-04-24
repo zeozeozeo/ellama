@@ -229,6 +229,17 @@ impl Message {
                         self.is_generating = true;
                         action = MessageAction::Regenerate(idx);
                     }
+                    if !prepend_buf.is_empty()
+                        && ui
+                            .button("\u{270f} Edit")
+                            .on_hover_text(
+                                "Edit the message in the context, but don't regenerate it",
+                            )
+                            .clicked()
+                    {
+                        self.content = prepend_buf.clone();
+                        cancel_prepend!();
+                    }
                     if ui.button("❌ Cancel").clicked() {
                         cancel_prepend!();
                     }
@@ -611,13 +622,9 @@ impl Chat {
             self.summary = make_summary(&prompt);
         }
 
-        // clear chatbox
+        // clear chatbox & images
         self.chatbox.clear();
-
-        // push prompt to ollama context messages
-        let mut message = ChatMessage::user(prompt);
-        message.images = Self::convert_images(&self.images);
-        self.images.clear(); // clear images after converting them
+        self.images.clear();
 
         // get ready for assistant response
         self.messages

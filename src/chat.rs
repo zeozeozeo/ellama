@@ -103,6 +103,12 @@ fn make_short_name(name: &str) -> String {
     }
 }
 
+enum MessageAction {
+    None,
+    Retry(usize),
+    Regenerate(usize),
+}
+
 impl Message {
     #[inline]
     fn user(content: String, model_name: String, images: Vec<PathBuf>) -> Self {
@@ -139,7 +145,7 @@ impl Message {
         tts: SharedTts,
         idx: usize,
         prepend_buf: &mut String,
-    ) -> bool {
+    ) -> MessageAction {
         // message role
         let message_offset = ui
             .horizontal(|ui| {
@@ -168,7 +174,7 @@ impl Message {
         }
 
         // message content / spinner
-        let mut retry = false;
+        let mut action = MessageAction::None;
         ui.horizontal(|ui| {
             ui.add_space(message_offset);
             if self.content.is_empty() && self.is_generating && !self.is_error {
@@ -186,35 +192,44 @@ impl Message {
                 });
             } else if self.is_error {
                 ui.label("An error occurred while requesting completion");
-                retry = ui
+                if ui
                     .button("Retry")
                     .on_hover_text(
                         "Try to generate a response again. Make sure you have Ollama running",
                     )
-                    .clicked();
+                    .clicked()
+                {
+                    action = MessageAction::Retry(idx);
+                }
             } else if self.is_prepending {
                 let textedit = ui.add(
                     egui::TextEdit::multiline(prepend_buf).hint_text("Prepend text to response…"),
                 );
-                let mut cancel_prepend = || {
+                let mut cancel_prepend = |clear: bool| {
                     self.is_prepending = false;
-                    prepend_buf.clear();
-                };
-                if textedit.lost_focus() {
-                    if ui.input(|i| i.key_pressed(Key::Escape)) {
-                        cancel_prepend();
+                    if clear {
+                        prepend_buf.clear();
                     }
+                };
+                if textedit.lost_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
+                    cancel_prepend(true);
                 }
                 ui.vertical(|ui| {
                     if ui
                         .button("🔄 Regenerate")
-                        .on_hover_text("Generate the response again, the LLM will start after any prepended text.")
+                        .on_hover_text(
+                            "Generate the response again, \
+                            the LLM will start after any prepended text.",
+                        )
                         .clicked()
                     {
-                        cancel_prepend();
+                        cancel_prepend(false);
+                        self.content.clear();
+                        self.is_generating = true;
+                        action = MessageAction::Regenerate(idx);
                     }
                     if ui.button("❌ Cancel").clicked() {
-                        cancel_prepend();
+                        cancel_prepend(true);
                     }
                 });
             } else {
@@ -237,7 +252,7 @@ impl Message {
         }
 
         if self.is_prepending {
-            return retry;
+            return action;
         }
 
         // copy buttons and such
@@ -306,13 +321,13 @@ impl Message {
             ui.add_space(8.0);
         }
 
-        retry
+        action
     }
 }
 
 // <completion progress, final completion, error>
-type CompletionFlower = CompactFlower<String, String, String>;
-type CompletionFlowerHandle = CompactHandle<String, String, String>;
+type CompletionFlower = CompactFlower<(usize, String), (usize, String), (usize, String)>;
+type CompletionFlowerHandle = CompactHandle<(usize, String), (usize, String), (usize, String)>;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -365,11 +380,27 @@ async fn request_completion(
     selected_model: String,
     options: GenerationOptions,
     template: Option<String>,
+    index: usize,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     log::info!(
         "requesting completion... (history length: {})",
         messages.len()
     );
+
+    // if any assistant message was prepended, save it so we can prepend it
+    // to the final response
+    let prepend = {
+        if let Some(last) = messages.last() {
+            if last.role == ollama_rs::generation::chat::MessageRole::Assistant {
+                last.content.clone()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    };
+
     let mut request = ChatMessageRequest::new(selected_model, messages).options(options);
     if let Some(template) = template {
         request = request.template(template);
@@ -394,7 +425,7 @@ async fn request_completion(
             is_whitespace = false;
 
             // send message to gui thread
-            handle.send(content.to_string());
+            handle.send((index, content.to_string()));
             response += content;
 
             if stop_generating.load(Ordering::SeqCst) {
@@ -410,7 +441,7 @@ async fn request_completion(
         "completion request complete, response length: {}",
         response.len()
     );
-    handle.success(response.trim().to_string());
+    handle.success((index, prepend + response.trim()));
     Ok(())
 }
 
@@ -540,7 +571,7 @@ impl Chat {
         self.messages.retain(|m| !m.is_error);
 
         let prompt = self.chatbox.trim_end().to_string();
-        let model_name = self.model_picker.selected.name.clone();
+        let model_name = self.model_picker.selected_model();
         self.messages.push(Message::user(
             prompt.clone(),
             model_name.clone(),
@@ -572,12 +603,21 @@ impl Chat {
         self.messages
             .push(Message::assistant(String::new(), model_name.clone()));
 
-        // spawn a new thread to generate the completion
+        self.spawn_completion(ollama.clone(), context_messages, model_name);
+    }
+
+    /// spawn a new task to generate the completion
+    fn spawn_completion(
+        &self,
+        ollama: Ollama,
+        context_messages: Vec<ChatMessage>,
+        model_name: String,
+    ) {
         let handle = self.flower.handle(); // recv'd by gui thread
-        let ollama = ollama.clone();
         let stop_generation = self.stop_generating.clone();
         let generation_options = self.model_picker.get_generation_options();
         let template = self.model_picker.template.clone();
+        let index = self.messages.len() - 1;
         tokio::spawn(async move {
             handle.activate();
             let _ = request_completion(
@@ -588,13 +628,38 @@ impl Chat {
                 model_name,
                 generation_options,
                 template,
+                index,
             )
             .await
             .map_err(|e| {
                 log::error!("failed to request completion: {e}");
-                handle.error(e.to_string());
+                handle.error((index, e.to_string()));
             });
         });
+    }
+
+    fn regenerate_response(&mut self, ollama: &Ollama, idx: usize) {
+        // remake context history to make the message we want to regenerate last
+        let mut messages = Vec::new();
+        self.context_messages[..idx].clone_into(&mut messages);
+        log::info!("messages: {messages:?}");
+
+        // start with the prepended message and update it in the displayed messages
+        messages.push(ChatMessage::assistant(self.prepend_buf.clone()));
+        self.messages[idx].content = self.prepend_buf.clone();
+        self.prepend_buf.clear();
+
+        log::info!(
+            "regenerating response, last msg: {}",
+            messages.last().unwrap().content
+        );
+
+        // start completing the message
+        self.spawn_completion(
+            ollama.clone(),
+            messages,
+            self.messages[idx].model_name.clone(),
+        );
     }
 
     fn show_chatbox(
@@ -692,19 +757,22 @@ impl Chat {
 
     pub fn poll_flower(&mut self, modal: &mut Modal) {
         self.flower
-            .extract(|progress| {
-                self.messages.last_mut().unwrap().content += progress.as_str();
+            .extract(|(idx, progress)| {
+                self.messages[idx].content += progress.as_str();
             })
             .finalize(|result| {
-                let message = self.messages.last_mut().unwrap();
-
-                if let Ok(content) = result {
+                if let Ok((idx, content)) = result {
+                    let message = &mut self.messages[idx];
                     message.content = content;
+                    message.is_generating = false;
                 } else if let Err(e) = result {
-                    let msg = match e {
-                        Compact::Panicked(e) => format!("Tokio task panicked: {e}"),
-                        Compact::Suppose(e) => e,
+                    let (idx, msg) = match e {
+                        Compact::Panicked(e) => {
+                            (self.messages.len() - 1, format!("Tokio task panicked: {e}"))
+                        }
+                        Compact::Suppose((idx, e)) => (idx, e),
                     };
+                    let message = &mut self.messages[idx];
                     message.content = msg.clone();
                     message.is_error = true;
                     modal
@@ -713,8 +781,8 @@ impl Chat {
                         .with_title("Failed to generate completion!")
                         .with_icon(Icon::Error)
                         .open();
+                    message.is_generating = false;
                 }
-                message.is_generating = false;
             });
     }
 
@@ -773,11 +841,13 @@ impl Chat {
     fn show_chat_scrollarea(
         &mut self,
         ui: &mut egui::Ui,
+        ollama: &Ollama,
         commonmark_cache: &mut CommonMarkCache,
         tts: SharedTts,
     ) -> Option<usize> {
         let mut new_speaker: Option<usize> = None;
         let mut any_prepending = false;
+        let mut regenerate_response_idx = None;
         egui::ScrollArea::both()
             .stick_to_bottom(true)
             .auto_shrink(false)
@@ -792,14 +862,21 @@ impl Chat {
                         if any_prepending && message.is_prepending {
                             message.is_prepending = false;
                         }
-                        if message.show(
+                        let action = message.show(
                             ui,
                             commonmark_cache,
                             tts.clone(),
                             index,
                             &mut self.prepend_buf,
-                        ) {
-                            self.retry_message_idx = Some(index - 1);
+                        );
+                        match action {
+                            MessageAction::None => (),
+                            MessageAction::Retry(idx) => {
+                                self.retry_message_idx = Some(idx);
+                            }
+                            MessageAction::Regenerate(idx) => {
+                                regenerate_response_idx = Some(idx);
+                            }
                         }
                         any_prepending |= message.is_prepending;
                         if !prev_speaking && message.is_speaking {
@@ -808,6 +885,9 @@ impl Chat {
                         1 // 1 rendered item per row
                     });
             });
+        if let Some(regenerate_idx) = regenerate_response_idx {
+            self.regenerate_response(ollama, regenerate_idx);
+        }
         new_speaker
     }
 
@@ -848,7 +928,7 @@ impl Chat {
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
-                if let Some(new) = self.show_chat_scrollarea(ui, commonmark_cache, tts) {
+                if let Some(new) = self.show_chat_scrollarea(ui, ollama, commonmark_cache, tts) {
                     new_speaker = Some(new);
                 }
 

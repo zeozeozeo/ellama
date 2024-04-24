@@ -264,6 +264,11 @@ impl ModelPicker {
     pub fn get_generation_options(&self) -> GenerationOptions {
         self.settings.clone().into()
     }
+
+    #[inline]
+    pub fn selected_model(&self) -> String {
+        self.selected.name.clone()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]

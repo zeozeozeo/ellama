@@ -1,5 +1,8 @@
 use eframe::{
-    egui::{self, collapsing_header::CollapsingState, Color32, Layout, RichText},
+    egui::{
+        self, collapsing_header::CollapsingState, Color32, Frame, Layout, RichText, Rounding,
+        Stroke, Vec2,
+    },
     emath::Numeric,
 };
 use ollama_rs::{
@@ -577,4 +580,72 @@ impl ModelSettings {
         Self::edit_numeric(ui, &mut self.top_k, 40, 1.0, "Top-K", "Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative.");
         Self::edit_numeric(ui, &mut self.top_p, 0.9, 0.01, "Top-P", "Works together with top-k. A higher value (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.");
     }
+}
+
+/// Helper function to center arbitrary widgets. It works by measuring the width of the widgets after rendering, and
+/// then using that offset on the next frame.
+//
+// adapted from https://gist.github.com/juancampa/faf3525beefa477babdad237f5e81ffe
+pub fn centerer(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
+    let available_height = ui.available_height();
+    ui.horizontal(|ui| {
+        let id = ui.id().with("_centerer");
+        let last_size: Option<(f32, f32)> = ui.memory_mut(|mem| mem.data.get_temp(id));
+        if let Some(last_size) = last_size {
+            ui.add_space((ui.available_width() - last_size.0) / 2.0);
+        }
+
+        let res = ui
+            .vertical(|ui| {
+                if let Some(last_size) = last_size {
+                    ui.add_space((available_height - last_size.1) / 2.0)
+                }
+                ui.scope(|ui| {
+                    add_contents(ui);
+                })
+                .response
+            })
+            .inner;
+
+        let (width, height) = (res.rect.width(), res.rect.height());
+        ui.memory_mut(|mem| mem.data.insert_temp(id, (width, height)));
+
+        // Repaint if width changed
+        match last_size {
+            None => ui.ctx().request_repaint(),
+            Some((last_width, last_height)) if last_width != width || last_height != height => {
+                ui.ctx().request_repaint()
+            }
+            Some(_) => {}
+        }
+    });
+}
+
+pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) {
+    let resp = Frame::group(ui.style())
+        .rounding(Rounding::same(6.0))
+        .stroke(Stroke::NONE)
+        .fill(ui.style().visuals.faint_bg_color)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.add(egui::Label::new(text).wrap(false).selectable(false));
+                ui.add_enabled(
+                    false,
+                    egui::Label::new(subtext).wrap(false).selectable(false),
+                );
+            });
+            ui.add_space(ui.available_width());
+        })
+        .response;
+
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+}
+
+pub fn dummy(ui: &mut egui::Ui) {
+    ui.add_sized(
+        Vec2::ZERO,
+        egui::Label::new("").wrap(false).selectable(false),
+    );
 }

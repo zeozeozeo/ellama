@@ -1,4 +1,8 @@
-use crate::{easymark::MemoizedEasymarkHighlighter, sessions::SharedTts, widgets::ModelPicker};
+use crate::{
+    easymark::MemoizedEasymarkHighlighter,
+    sessions::SharedTts,
+    widgets::{self, ModelPicker},
+};
 use anyhow::{Context, Result};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
@@ -920,6 +924,36 @@ impl Chat {
         new_speaker
     }
 
+    fn show_suggestions(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+            widgets::centerer(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Ellama");
+                    ui.add_enabled_ui(false, |ui| {
+                        ui.heading(format!("({})", self.model_picker.selected.name));
+                    });
+                });
+                egui::Grid::new("suggestions_grid")
+                    .num_columns(3)
+                    .show(ui, |ui| {
+                        widgets::suggestion(ui, "Tell me a fun fact", "about the Roman empire");
+                        widgets::suggestion(
+                            ui,
+                            "Show me a code snippet",
+                            "of a web server in Rust",
+                        );
+                        widgets::dummy(ui);
+                        ui.end_row();
+
+                        widgets::suggestion(ui, "Tell me a joke", "about crabs");
+                        widgets::suggestion(ui, "Give me ideas", "for a birthday present");
+                        widgets::dummy(ui);
+                        ui.end_row();
+                    });
+            });
+        });
+    }
+
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -957,20 +991,25 @@ impl Chat {
                 bottom: 3.0,
             }))
             .show(ctx, |ui| {
-                if let Some(new) = self.show_chat_scrollarea(ui, ollama, commonmark_cache, tts) {
-                    new_speaker = Some(new);
-                }
+                if self.messages.is_empty() {
+                    self.show_suggestions(ui);
+                } else {
+                    if let Some(new) = self.show_chat_scrollarea(ui, ollama, commonmark_cache, tts)
+                    {
+                        new_speaker = Some(new);
+                    }
 
-                // stop generating button
-                if is_generating {
-                    self.stop_generating_button(
-                        ui,
-                        16.0,
-                        pos2(
-                            ui.cursor().max.x - 32.0,
-                            avail.height() - 32.0 - actual_chatbox_panel_height,
-                        ),
-                    );
+                    // stop generating button
+                    if is_generating {
+                        self.stop_generating_button(
+                            ui,
+                            16.0,
+                            pos2(
+                                ui.cursor().max.x - 32.0,
+                                avail.height() - 32.0 - actual_chatbox_panel_height,
+                            ),
+                        );
+                    }
                 }
             });
 

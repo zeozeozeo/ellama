@@ -667,6 +667,7 @@ pub fn dummy(ui: &mut egui::Ui) {
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct Settings {
     pub host: String,
+    host_error: String,
 }
 
 const DEFAULT_HOST: &str = "http://127.0.0.1:11434";
@@ -676,6 +677,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             host: DEFAULT_HOST.to_owned(),
+            host_error: String::new(),
         }
     }
 }
@@ -699,16 +701,26 @@ impl Settings {
             .show(ui, |ui| {
                 ui.label("Host");
                 ui.horizontal(|ui| {
-                    egui::TextEdit::singleline(&mut self.host)
+                    let textedit = egui::TextEdit::singleline(&mut self.host)
                         .hint_text(DEFAULT_HOST)
                         .show(ui);
+                    if textedit.response.changed() {
+                        if let Err(e) = self.get_host_and_port() {
+                            self.host_error = e.to_string();
+                        } else {
+                            self.host_error.clear();
+                        }
+                    }
                     if self.host != DEFAULT_HOST
                         && ui.button("↺").on_hover_text("Reset to default").clicked()
                     {
+                        self.host_error.clear();
                         self.host = DEFAULT_HOST.to_owned();
                     }
-                    if let Err(e) = self.get_host_and_port() {
-                        ui.label(RichText::new(e.to_string()).color(ui.visuals().error_fg_color));
+                    if !self.host_error.is_empty() {
+                        ui.label(
+                            RichText::new(&self.host_error).color(ui.visuals().error_fg_color),
+                        );
                     }
                 });
                 ui.end_row();

@@ -1,6 +1,6 @@
 use crate::{
     chat::{Chat, ChatAction, ChatExportFormat},
-    widgets::{ModelPicker, RequestInfoType},
+    widgets::{ModelPicker, RequestInfoType, Settings},
 };
 use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
 use egui_commonmark::CommonMarkCache;
@@ -104,6 +104,8 @@ pub struct Sessions {
     chat_export_format: ChatExportFormat,
     #[serde(skip)]
     toasts: Toasts,
+    settings_open: bool,
+    settings: Settings,
 }
 
 impl Default for Sessions {
@@ -131,6 +133,8 @@ impl Default for Sessions {
             edited_chat: 0,
             chat_export_format: ChatExportFormat::default(),
             toasts: Toasts::default(),
+            settings_open: false,
+            settings: Settings::default(),
         }
     }
 }
@@ -274,11 +278,26 @@ impl Sessions {
             ctx.request_repaint();
         }
 
+        if self.settings_open {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+                    self.settings.show(ui);
+                });
+            });
+        } else {
+            self.show_selected_chat(ctx, ollama, prev_is_speaking && !self.is_speaking)
+        }
+
+        // display toast queue
+        self.toasts.show(ctx);
+    }
+
+    fn show_selected_chat(&mut self, ctx: &egui::Context, ollama: &Ollama, stopped_talking: bool) {
         let action = self.chats[self.selected_chat].show(
             ctx,
             ollama,
             self.tts.clone(),
-            prev_is_speaking && !self.is_speaking, // stopped_talking
+            stopped_talking,
             &mut self.commonmark_cache,
         );
 
@@ -292,9 +311,6 @@ impl Sessions {
                 });
             }
         }
-
-        // display toast queue
-        self.toasts.show(ctx);
     }
 
     fn show_remove_chat_modal_inner(&mut self, ui: &mut egui::Ui, modal: &Modal) {
@@ -422,6 +438,10 @@ impl Sessions {
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, SessionTab::Chats, "Chats");
             ui.selectable_value(&mut self.tab, SessionTab::Model, "Model");
+            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.toggle_value(&mut self.settings_open, "⚙")
+                    .on_hover_text("Settings");
+            });
         });
 
         ui.add_space(8.0);

@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use eframe::{
     egui::{
         self, collapsing_header::CollapsingState, Color32, Frame, Layout, RichText, Rounding,
@@ -661,4 +662,60 @@ pub fn dummy(ui: &mut egui::Ui) {
         Vec2::ZERO,
         egui::Label::new("").wrap(false).selectable(false),
     );
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct Settings {
+    pub host: String,
+}
+
+const DEFAULT_HOST: &str = "http://127.0.0.1:11434";
+const DEFAULT_PORT: u16 = 11434;
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            host: DEFAULT_HOST.to_owned(),
+        }
+    }
+}
+
+impl Settings {
+    pub fn get_host_and_port(&self) -> Result<(String, u16)> {
+        let url = url::Url::parse(&self.host)?;
+        Ok((
+            url.host_str().context("invalid host")?.to_owned(),
+            url.port().unwrap_or(DEFAULT_PORT),
+        ))
+    }
+
+    pub fn show(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Settings");
+
+        egui::Grid::new("settings_grid")
+            .num_columns(2)
+            .striped(true)
+            .min_row_height(32.0)
+            .show(ui, |ui| {
+                ui.label("Host");
+                ui.horizontal(|ui| {
+                    egui::TextEdit::singleline(&mut self.host)
+                        .hint_text(DEFAULT_HOST)
+                        .show(ui);
+                    if self.host != DEFAULT_HOST
+                        && ui.button("↺").on_hover_text("Reset to default").clicked()
+                    {
+                        self.host = DEFAULT_HOST.to_owned();
+                    }
+                    if let Err(e) = self.get_host_and_port() {
+                        ui.label(RichText::new(e.to_string()).color(ui.visuals().error_fg_color));
+                    }
+                });
+                ui.end_row();
+
+                ui.label("Something");
+                ui.label("else");
+                ui.end_row();
+            });
+    }
 }

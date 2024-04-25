@@ -262,7 +262,11 @@ impl Message {
             }
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
-                crate::image::show_images(ui, &mut self.images, false);
+                egui::ScrollArea::horizontal().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        crate::image::show_images(ui, &mut self.images, false);
+                    });
+                })
             });
             ui.add_space(8.0);
         }
@@ -716,18 +720,13 @@ impl Chat {
 
         let images_height = if !self.images.is_empty() {
             ui.add_space(8.0);
-            let height = egui::ScrollArea::horizontal()
-                .show(ui, |ui| {
-                    let height = ui
-                        .horizontal(|ui| {
-                            crate::image::show_images(ui, &mut self.images, true);
-                        })
-                        .response
-                        .rect
-                        .height();
-                    height
+            let height = ui
+                .horizontal(|ui| {
+                    crate::image::show_images(ui, &mut self.images, true);
                 })
-                .inner;
+                .response
+                .rect
+                .height();
             height + 16.0
         } else {
             0.0

@@ -612,7 +612,7 @@ impl Chat {
 
     fn send_message(&mut self, ollama: &Ollama) {
         // don't send empty messages
-        if self.chatbox.is_empty() {
+        if self.chatbox.is_empty() && self.images.is_empty() {
             return;
         }
 
@@ -704,9 +704,9 @@ impl Chat {
     ) -> ChatAction {
         let mut action = ChatAction::None;
         if let Some(idx) = self.retry_message_idx.take() {
-            self.chatbox = self.messages[idx].content.clone();
-            self.messages.remove(idx + 1);
-            self.messages.remove(idx);
+            self.chatbox = self.messages[idx - 1].content.clone();
+            self.messages.remove(idx); // remove assistant message
+            self.messages.remove(idx - 1); // remove user message
             self.send_message(ollama);
         }
 

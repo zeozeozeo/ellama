@@ -570,7 +570,10 @@ impl Sessions {
                         .truncate(true),
                 );
             } else {
-                EmojiLabel::new(summary).selectable(false).show(ui);
+                EmojiLabel::new(summary)
+                    .selectable(false)
+                    .truncate(true)
+                    .show(ui);
             }
 
             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {

@@ -100,8 +100,14 @@ fn tts_control(tts: SharedTts, text: String, speak: bool) {
 /// - nous-hermes2:latest -> Nous
 /// - gemma:latest -> Gemma
 /// - starling-lm:7b-beta-q5_K_M -> Starling
+/// - bambucha/saiga-llama3 -> Saiga
 fn make_short_name(name: &str) -> String {
-    let mut c = name.chars().take_while(|c| c.is_alphanumeric());
+    let mut c = name
+        .split('/')
+        .nth(1)
+        .unwrap_or(name)
+        .chars()
+        .take_while(|c| c.is_alphanumeric());
     match c.next() {
         None => "Llama".to_string(),
         Some(f) => f.to_uppercase().collect::<String>() + c.collect::<String>().as_str(),

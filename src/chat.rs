@@ -939,9 +939,11 @@ impl Chat {
             widgets::centerer(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Ellama");
-                    ui.add_enabled_ui(false, |ui| {
-                        ui.heading(format!("({})", self.model_picker.selected.name));
-                    });
+                    if !self.model_picker.selected.name.is_empty() {
+                        ui.add_enabled_ui(false, |ui| {
+                            ui.heading(format!("({})", self.model_picker.selected.name));
+                        });
+                    }
                 });
                 egui::Grid::new("suggestions_grid")
                     .num_columns(3)

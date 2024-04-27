@@ -105,7 +105,7 @@ pub struct Sessions {
     #[serde(skip)]
     toasts: Toasts,
     settings_open: bool,
-    settings: Settings,
+    pub settings: Settings,
 }
 
 impl Default for Sessions {
@@ -702,6 +702,7 @@ impl Sessions {
                 .ui_custom_layout(ui, self.chats.len(), |ui, i| {
                     if self.show_chat_in_sidepanel(ui, i, modal) {
                         self.selected_chat = i;
+                        self.settings_open = false;
                     }
                     ui.add_space(2.0);
                     1

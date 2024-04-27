@@ -11,7 +11,7 @@ egui_commonmark = { git = "https://github.com/zeozeozeo/egui_commonmark.git", br
 env_logger = "0.11"
 flowync = { version = "5.1", features = ["compact"] }
 log = "0.4.21"
-ollama-rs = { version = "0.1.9", features = ["rustls", "stream"] }
+ollama-rs = { git = "https://github.com/zeozeozeo/ollama-rs", branch = "url", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 egui-modal = "0.3.6"
@@ -32,4 +32,4 @@ egui-twemoji = "0.3.0"
 image = "0.24"
 egui_extras = { version = "0.27.2", features = ["file", "image"] }
 base64-stream = "3.0.1"
-url = "2.5.0"
+url = "2"

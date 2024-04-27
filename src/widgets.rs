@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use eframe::{
     egui::{
         self, collapsing_header::CollapsingState, Color32, Frame, Layout, RichText, Rounding,
@@ -9,7 +9,9 @@ use eframe::{
 use ollama_rs::{
     generation::options::GenerationOptions,
     models::{LocalModel, ModelInfo},
+    Ollama,
 };
+use url::Url;
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SelectedModel {
@@ -666,29 +668,36 @@ pub fn dummy(ui: &mut egui::Ui) {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct Settings {
-    pub host: String,
-    host_error: String,
+    pub endpoint: String,
+    endpoint_error: String,
 }
 
 const DEFAULT_HOST: &str = "http://127.0.0.1:11434";
-const DEFAULT_PORT: u16 = 11434;
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            host: DEFAULT_HOST.to_owned(),
-            host_error: String::new(),
+            endpoint: DEFAULT_HOST.to_owned(),
+            endpoint_error: String::new(),
         }
     }
 }
 
 impl Settings {
-    pub fn get_host_and_port(&self) -> Result<(String, u16)> {
-        let url = url::Url::parse(&self.host)?;
-        Ok((
-            url.host_str().context("invalid host")?.to_owned(),
-            url.port().unwrap_or(DEFAULT_PORT),
-        ))
+    fn parse_endpoint(&self) -> Result<Url> {
+        let url = url::Url::parse(&self.endpoint)?;
+        if !url.has_host() {
+            return Err(anyhow::anyhow!("invalid host"));
+        }
+        Ok(url)
+    }
+
+    #[inline]
+    pub fn make_ollama(&self) -> Ollama {
+        Ollama::from_url(
+            self.parse_endpoint()
+                .unwrap_or_else(|_| Url::parse(DEFAULT_HOST).unwrap()),
+        )
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui) {
@@ -699,27 +708,27 @@ impl Settings {
             .striped(true)
             .min_row_height(32.0)
             .show(ui, |ui| {
-                ui.label("Host");
+                ui.label("Endpoint");
                 ui.horizontal(|ui| {
-                    let textedit = egui::TextEdit::singleline(&mut self.host)
+                    let textedit = egui::TextEdit::singleline(&mut self.endpoint)
                         .hint_text(DEFAULT_HOST)
                         .show(ui);
                     if textedit.response.changed() {
-                        if let Err(e) = self.get_host_and_port() {
-                            self.host_error = e.to_string();
+                        if let Err(e) = self.parse_endpoint() {
+                            self.endpoint_error = e.to_string();
                         } else {
-                            self.host_error.clear();
+                            self.endpoint_error.clear();
                         }
                     }
-                    if self.host != DEFAULT_HOST
+                    if self.endpoint != DEFAULT_HOST
                         && ui.button("↺").on_hover_text("Reset to default").clicked()
                     {
-                        self.host_error.clear();
-                        self.host = DEFAULT_HOST.to_owned();
+                        self.endpoint_error.clear();
+                        self.endpoint = DEFAULT_HOST.to_owned();
                     }
-                    if !self.host_error.is_empty() {
+                    if !self.endpoint_error.is_empty() {
                         ui.label(
-                            RichText::new(&self.host_error).color(ui.visuals().error_fg_color),
+                            RichText::new(&self.endpoint_error).color(ui.visuals().error_fg_color),
                         );
                     }
                 });

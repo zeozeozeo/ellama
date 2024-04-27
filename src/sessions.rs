@@ -21,7 +21,6 @@ use tts::Tts;
 enum SessionTab {
     #[default]
     Chats,
-    Model,
 }
 
 pub type SharedTts = Option<Arc<RwLock<Tts>>>;
@@ -88,13 +87,11 @@ pub struct Sessions {
     commonmark_cache: CommonMarkCache,
     #[serde(skip)]
     flower: OllamaFlower,
-    #[serde(skip)]
     models: Vec<LocalModel>,
     #[serde(skip)]
     flower_activity: OllamaFlowerActivity,
     #[serde(skip)]
     last_request_time: Instant,
-    model_picker: ModelPicker,
     #[serde(skip)]
     pending_model_infos: HashMap<String, ()>,
     #[serde(skip)]
@@ -126,7 +123,6 @@ impl Default for Sessions {
             models: Vec::new(),
             flower_activity: OllamaFlowerActivity::default(),
             last_request_time: now,
-            model_picker: ModelPicker::default(),
             pending_model_infos: HashMap::new(),
             virtual_list: Rc::new(RefCell::new(VirtualList::default())),
             edit_modal_open: false,
@@ -235,6 +231,8 @@ impl Sessions {
 
         let mut modal = Modal::new(ctx, "sessions_main_modal");
         let mut chat_modal = Modal::new(ctx, "chat_main_modal").with_close_on_outside_click(true);
+        let settings_modal =
+            Modal::new(ctx, "global_settings_modal").with_close_on_outside_click(true);
 
         if self.edit_modal_open {
             let mut open = self.edit_modal_open;
@@ -252,13 +250,14 @@ impl Sessions {
         // it won't be located in the center of the window but in the center of the centralpanel instead
         chat_modal.show_dialog();
         modal.show_dialog();
+        self.settings.show_modal(&settings_modal);
 
         let avail_width = ctx.available_rect().width();
         egui::SidePanel::left("sessions_panel")
             .resizable(true)
             .max_width(avail_width * 0.5)
             .show(ctx, |ui| {
-                self.show_left_panel(ui, ollama);
+                self.show_left_panel(ui);
                 ui.allocate_space(ui.available_size());
             });
 
@@ -281,7 +280,35 @@ impl Sessions {
         if self.settings_open {
             egui::CentralPanel::default().show(ctx, |ui| {
                 egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-                    self.settings.show(ui);
+                    let mut request_info_for: Option<String> = None;
+                    let mut list_models = false;
+
+                    self.settings.show(
+                        ui,
+                        if self.is_loading_models() {
+                            None
+                        } else {
+                            Some(&self.models)
+                        },
+                        |typ| match typ {
+                            RequestInfoType::ModelInfo(name) => {
+                                if !self.pending_model_infos.contains_key(name) {
+                                    request_info_for = Some(name.to_string());
+                                }
+                            }
+                            RequestInfoType::Models => {
+                                list_models = true;
+                            }
+                        },
+                        &settings_modal,
+                    );
+
+                    if let Some(name) = request_info_for {
+                        self.request_model_info(name, ollama.clone());
+                    }
+                    if list_models {
+                        self.list_models(ollama.clone());
+                    }
                 });
             });
         } else {
@@ -433,11 +460,10 @@ impl Sessions {
         });
     }
 
-    fn show_left_panel(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
+    fn show_left_panel(&mut self, ui: &mut egui::Ui) {
         ui.add_space(ui.style().spacing.window_margin.top);
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, SessionTab::Chats, "Chats");
-            ui.selectable_value(&mut self.tab, SessionTab::Model, "Model");
             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.toggle_value(&mut self.settings_open, "⚙")
                     .on_hover_text("Settings");
@@ -454,12 +480,12 @@ impl Sessions {
                     self.show_remove_chat_modal_inner(ui, &modal);
                 });
             }
-            SessionTab::Model => {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.show_model_tab(ui, ollama);
-                });
-            }
         }
+    }
+
+    #[inline]
+    pub fn model_picker(&self) -> &ModelPicker {
+        &self.settings.model_picker
     }
 
     fn poll_ollama_flower(&mut self, modal: &Modal) {
@@ -468,20 +494,21 @@ impl Sessions {
                 Ok(OllamaResponse::Ignore) => (),
                 Ok(OllamaResponse::Models(models)) => {
                     self.models = models;
-                    if !self.model_picker.has_selection() {
-                        self.model_picker.select_best_model(&self.models);
+                    if !self.settings.model_picker.has_selection() {
+                        self.settings.model_picker.select_best_model(&self.models);
 
                         // for each chat with unselected models, select the best model
                         for chat in self.chats.iter_mut() {
                             if !chat.model_picker.has_selection() {
-                                chat.model_picker.selected = self.model_picker.selected.clone();
+                                chat.model_picker.selected =
+                                    self.settings.model_picker.selected.clone();
                             }
                         }
                     }
                 }
                 Ok(OllamaResponse::ModelInfo { name, info }) => {
                     self.pending_model_infos.remove(&name);
-                    self.model_picker.on_new_model_info(&name, &info);
+                    self.settings.model_picker.on_new_model_info(&name, &info);
                     for chat in self.chats.iter_mut() {
                         chat.model_picker.on_new_model_info(&name, &info);
                     }
@@ -521,42 +548,11 @@ impl Sessions {
         self.flower.is_active() && self.flower_activity == OllamaFlowerActivity::ListModels
     }
 
-    fn show_model_tab(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
-        let mut request_info_for: Option<String> = None;
-        let mut list_models = false;
-        ui.label("Default model for new chats.");
-        self.model_picker.show(
-            ui,
-            if self.is_loading_models() {
-                None
-            } else {
-                Some(&self.models)
-            },
-            |typ| match typ {
-                RequestInfoType::ModelInfo(name) => {
-                    if !self.pending_model_infos.contains_key(name) {
-                        request_info_for = Some(name.to_string());
-                    }
-                }
-                RequestInfoType::Models => {
-                    list_models = true;
-                }
-            },
-        );
-
-        if let Some(name) = request_info_for {
-            self.request_model_info(name, ollama.clone());
-        }
-        if list_models {
-            self.list_models(ollama.clone());
-        }
-    }
-
     #[inline]
     fn add_default_chat(&mut self) {
         // id 1 is already used, and we (probably) don't want to reuse ids for flowers
         self.chats
-            .push(Chat::new(self.chats.len() + 2, self.model_picker.clone()));
+            .push(Chat::new(self.chats.len() + 2, self.model_picker().clone()));
     }
 
     fn remove_chat(&mut self, idx: usize) {

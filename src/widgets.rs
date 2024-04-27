@@ -6,6 +6,7 @@ use eframe::{
     },
     emath::Numeric,
 };
+use egui_modal::{Icon, Modal};
 use ollama_rs::{
     generation::options::GenerationOptions,
     models::{LocalModel, ModelInfo},
@@ -147,11 +148,9 @@ impl ModelPicker {
             return;
         }
 
-        ui.collapsing("Settings", |ui| {
+        ui.collapsing("Inference Settings", |ui| {
             self.settings.show(ui, &mut self.template);
         });
-
-        ui.separator();
 
         egui::Grid::new("selected_model_info_grid")
             .num_columns(2)
@@ -182,13 +181,14 @@ impl ModelPicker {
 
             collapsing_frame(ui, "Template", |ui| {
                 ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
                     ui.label("Prompt template to be passed into the model. It may include (optionally) a system message, a user's message and the response from the model. Note: syntax may be model specific. Templates use Go ");
-                    ui.style_mut().spacing.item_spacing.x = 0.0;
+                    ui.spacing_mut().item_spacing.x = 0.0;
                     const TEMPLATE_LINK: &str = "https://pkg.go.dev/text/template";
                     ui.hyperlink_to("template syntax", TEMPLATE_LINK).on_hover_text(TEMPLATE_LINK);
                     ui.label(". This overrides what is defined in the Modelfile. The default template is shown in the Template header.");
                 });
-                egui::Grid::new("set_template_variable_grid").striped(true).num_columns(2).show(ui, |ui| {
+                egui::Grid::new("set_template_variable_grid").num_columns(2).show(ui, |ui| {
                     ui.add(egui::Label::new(RichText::new("Variable").strong()).wrap(true));
                     ui.add(egui::Label::new(RichText::new("Description").strong()).wrap(true));
                     ui.end_row();
@@ -213,8 +213,8 @@ impl ModelPicker {
 
                 let mut enabled = self.template.is_some();
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut enabled, "Override");
-                    ui.label("(overrides the template set in the Modelfile)");
+                    ui.add(toggle(&mut enabled));
+                    ui.label("Override (overrides the template set in the Modelfile)");
                 });
                 if !enabled {
                     self.template = None;
@@ -408,7 +408,10 @@ impl ModelSettings {
         collapsing_frame(ui, name, |ui: &mut egui::Ui| {
             ui.label(doc);
             let mut enabled = val.is_some();
-            ui.checkbox(&mut enabled, "Enable");
+            ui.horizontal(|ui| {
+                ui.add(toggle(&mut enabled));
+                ui.label("Enable");
+            });
 
             if !enabled {
                 *val = None;
@@ -466,7 +469,12 @@ impl ModelSettings {
             ui.label("Enable Mirostat sampling for controlling perplexity.");
 
             let mut enabled = self.mirostat.is_some();
-            ui.checkbox(&mut enabled, "Enable");
+
+            ui.horizontal(|ui| {
+                ui.add(toggle(&mut enabled));
+                ui.label("Enable");
+            });
+
             if !enabled {
                 self.mirostat = None;
             } else if self.mirostat.is_none() {
@@ -536,7 +544,12 @@ impl ModelSettings {
                 When this pattern is encountered the LLM will stop generating text and return.",
             );
             let mut enabled = self.stop.is_some();
-            ui.checkbox(&mut enabled, "Enable");
+
+            ui.horizontal(|ui| {
+                ui.add(toggle(&mut enabled));
+                ui.label("Enable");
+            });
+
             if !enabled {
                 self.stop = None;
             } else if self.stop.is_none() {
@@ -666,9 +679,60 @@ pub fn dummy(ui: &mut egui::Ui) {
     );
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[inline]
+#[must_use]
+fn cubic_ease_out(range: std::ops::RangeInclusive<f32>, t: f32) -> f32 {
+    let start = *range.start();
+    let end = *range.end();
+    let t = if t > 1.0 { 1.0 } else { t };
+    let value = 1.0 - (1.0 - t).powf(3.0);
+    start + (end - start) * value
+}
+
+/// taken from https://github.com/emilk/egui/blob/master/crates/egui_demo_lib/src/demo/toggle_switch.rs
+fn toggle_ui(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
+    let desired_size = ui.spacing().interact_size.y * egui::vec2(2.0, 1.0);
+    let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, *on, ""));
+
+    if ui.is_rect_visible(rect) {
+        let how_on = ui.ctx().animate_bool(response.id, *on);
+        let visuals = ui.style().interact_selectable(&response, *on);
+        let rect = rect.expand(visuals.expansion);
+        let radius = 0.5 * rect.height();
+        ui.painter()
+            .rect(rect, radius, visuals.bg_fill, visuals.bg_stroke);
+        let circle_x = cubic_ease_out((rect.left() + radius)..=(rect.right() - radius), how_on);
+        let center = egui::pos2(circle_x, rect.center().y);
+        ui.painter()
+            .circle(center, 0.75 * radius, visuals.bg_fill, visuals.fg_stroke);
+    }
+
+    response
+}
+
+#[inline]
+fn toggle(on: &mut bool) -> impl egui::Widget + '_ {
+    move |ui: &mut egui::Ui| toggle_ui(ui, on)
+}
+
+fn help(ui: &mut egui::Ui, text: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        add_contents(ui);
+        ui.add_enabled(false, egui::Label::new("(?)").wrap(false).selectable(false))
+            .on_disabled_hover_text(text);
+    });
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct Settings {
     pub endpoint: String,
+    pub model_picker: ModelPicker,
+    pub inherit_chat_picker: bool,
     endpoint_error: String,
 }
 
@@ -678,6 +742,8 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             endpoint: DEFAULT_HOST.to_owned(),
+            model_picker: ModelPicker::default(),
+            inherit_chat_picker: true,
             endpoint_error: String::new(),
         }
     }
@@ -700,9 +766,57 @@ impl Settings {
         )
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Settings");
+    pub fn show_modal(&mut self, modal: &Modal) {
+        modal.show(|ui| {
+            modal.title(ui, "Reset Settings");
+            modal.frame(ui, |ui| {
+                modal.body_and_icon(
+                    ui,
+                    "Are you sure you want to reset global settings? \
+                    This action cannot be undone!",
+                    Icon::Warning,
+                );
+            });
+            modal.buttons(ui, |ui| {
+                modal.button(ui, "no");
+                if modal.caution_button(ui, "yes").clicked() {
+                    *self = Self::default();
+                }
+            });
+        });
+    }
 
+    async fn ask_save_settings(settings: Self) {
+        let Some(file) = rfd::AsyncFileDialog::new()
+            .add_filter("JSON file", &["json"])
+            .save_file()
+            .await
+        else {
+            log::warn!("no file selected");
+            return;
+        };
+
+        let Ok(f) = std::fs::File::create(file.path())
+            .map_err(|e| log::error!("failed to create file: {e}"))
+        else {
+            return;
+        };
+
+        let _ = serde_json::to_writer_pretty(f, &settings)
+            .map_err(|e| log::error!("failed to save settings: {e}"));
+    }
+
+    pub fn show<R>(
+        &mut self,
+        ui: &mut egui::Ui,
+        models: Option<&[LocalModel]>,
+        request_info: R,
+        modal: &Modal,
+    ) where
+        R: FnMut(RequestInfoType),
+    {
+        ui.heading("Ollama");
+        ui.label("Connection settings");
         egui::Grid::new("settings_grid")
             .num_columns(2)
             .striped(true)
@@ -733,10 +847,38 @@ impl Settings {
                     }
                 });
                 ui.end_row();
-
-                ui.label("Something");
-                ui.label("else");
-                ui.end_row();
             });
+
+        ui.separator();
+
+        ui.heading("Model");
+        ui.label("Default model for new chats");
+        ui.horizontal(|ui| {
+            ui.add(toggle(&mut self.inherit_chat_picker));
+            help(ui, "Inherit model changes from chats", |ui| {
+                ui.label("Inherit from chats");
+            });
+        });
+        ui.add_space(2.0);
+        self.model_picker.show(ui, models, request_info);
+
+        ui.separator();
+
+        ui.heading("Miscellaneous");
+        ui.label("Reset global settings to defaults");
+        if ui.button("Reset").clicked() {
+            modal.open();
+        }
+
+        ui.label("Save and load settings as JSON");
+        ui.horizontal(|ui| {
+            if ui.button("Save").clicked() {
+                let settings = self.clone();
+                tokio::spawn(async move {
+                    Self::ask_save_settings(settings).await;
+                });
+            }
+            if ui.button("Load").clicked() {}
+        });
     }
 }

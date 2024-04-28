@@ -112,12 +112,15 @@ impl ModelPicker {
         if let Some(models) = models {
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_source("model_selector_combobox")
-                    .selected_text(&self.selected.name)
+                    .selected_text(self.selected_model())
                     .show_ui(ui, |ui| {
                         for model in models {
                             ui.horizontal(|ui| {
                                 if ui
-                                    .selectable_label(self.selected.name == model.name, &model.name)
+                                    .selectable_label(
+                                        self.selected_model() == model.name,
+                                        &model.name,
+                                    )
                                     .clicked()
                                 {
                                     self.selected = model.clone().into();
@@ -242,7 +245,7 @@ impl ModelPicker {
                 ui.code_editor(&mut info.template.as_str());
             });
         } else {
-            request_info(RequestInfoType::ModelInfo(&self.selected.name));
+            request_info(RequestInfoType::ModelInfo(self.selected_model()));
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
                 ui.label("Loading model info…");
@@ -251,7 +254,7 @@ impl ModelPicker {
     }
 
     pub fn on_new_model_info(&mut self, name: &str, info: &ModelInfo) {
-        if self.selected.name == name {
+        if self.selected_model() == name {
             self.info = Some(info.clone());
         }
     }
@@ -262,7 +265,10 @@ impl ModelPicker {
         }
 
         if self.has_selection() {
-            log::info!("subjectively selected best model: {}", self.selected.name);
+            log::info!(
+                "subjectively selected best model: {}",
+                self.selected_model()
+            );
         }
     }
 
@@ -277,8 +283,8 @@ impl ModelPicker {
     }
 
     #[inline]
-    pub fn selected_model(&self) -> String {
-        self.selected.name.clone()
+    pub fn selected_model(&self) -> &str {
+        &self.selected.name
     }
 }
 

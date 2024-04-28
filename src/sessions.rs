@@ -442,6 +442,12 @@ impl Sessions {
                         RequestInfoType::LoadSettings => (), // can't be called from here
                     },
                 );
+                if self.settings.inherit_chat_picker
+                    && (chat.model_picker.selected_model()
+                        != self.settings.model_picker.selected_model())
+                {
+                    self.settings.model_picker.selected = chat.model_picker.selected.clone();
+                }
                 if let Some(name) = request_info_for {
                     self.request_model_info(name, ollama.clone());
                 }

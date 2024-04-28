@@ -630,7 +630,7 @@ impl Chat {
         self.messages.retain(|m| !m.is_error);
 
         let prompt = self.chatbox.trim_end().to_string();
-        let model_name = self.model_picker.selected_model();
+        let model_name = self.model_picker.selected_model().to_owned();
         self.messages.push(Message::user(
             prompt.clone(),
             model_name.clone(),
@@ -939,9 +939,9 @@ impl Chat {
             widgets::centerer(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Ellama");
-                    if !self.model_picker.selected.name.is_empty() {
+                    if !self.model_picker.selected_model().is_empty() {
                         ui.add_enabled_ui(false, |ui| {
-                            ui.heading(format!("({})", self.model_picker.selected.name));
+                            ui.heading(format!("({})", self.model_picker.selected_model()));
                         });
                     }
                 });

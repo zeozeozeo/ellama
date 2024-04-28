@@ -236,7 +236,21 @@ impl Sessions {
     }
 
     fn request_model_info(&mut self, model_name: String, ollama: Ollama) {
+        // check if any chats have the info of this model
         let handle = self.flower.handle();
+        for chat in &self.chats {
+            if chat.model_picker.selected_model() == model_name {
+                if let Some(info) = chat.model_picker.info.clone() {
+                    handle.activate();
+                    handle.success(OllamaResponse::ModelInfo {
+                        name: model_name.clone(),
+                        info,
+                    });
+                    return;
+                }
+            }
+        }
+
         self.flower_activity = OllamaFlowerActivity::ModelInfo;
         self.last_request_time = Instant::now();
         self.pending_model_infos.insert(model_name.clone(), ());
@@ -442,13 +456,13 @@ impl Sessions {
                         RequestInfoType::LoadSettings => (), // can't be called from here
                     },
                 );
-                if self.settings.inherit_chat_picker
-                    && (chat.model_picker.selected_model()
-                        != self.settings.model_picker.selected_model())
-                {
-                    self.settings.model_picker.selected = chat.model_picker.selected.clone();
-                }
                 if let Some(name) = request_info_for {
+                    if self.settings.inherit_chat_picker
+                        && (name != self.settings.model_picker.selected_model())
+                    {
+                        self.settings.model_picker.selected = chat.model_picker.selected.clone();
+                    }
+
                     self.request_model_info(name, ollama.clone());
                 }
                 if list_models {

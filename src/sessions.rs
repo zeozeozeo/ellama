@@ -31,6 +31,7 @@ enum OllamaResponse {
     ModelInfo { name: String, info: ModelInfo },
     Toast(Toast),
     Images { id: usize, files: Vec<PathBuf> },
+    Settings(Settings),
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -87,6 +88,7 @@ pub struct Sessions {
     commonmark_cache: CommonMarkCache,
     #[serde(skip)]
     flower: OllamaFlower,
+    #[serde(skip)]
     models: Vec<LocalModel>,
     #[serde(skip)]
     flower_activity: OllamaFlowerActivity,
@@ -187,6 +189,33 @@ async fn pick_images(id: usize, handle: &OllamaFlowerHandle) {
         id,
         files: files.iter().map(|f| f.path().to_path_buf()).collect(),
     });
+}
+
+async fn load_settings(handle: &OllamaFlowerHandle) {
+    let Some(file) = rfd::AsyncFileDialog::new()
+        .add_filter("JSON file", &["json"])
+        .pick_file()
+        .await
+    else {
+        handle.success(OllamaResponse::Toast(Toast::error("No file selected")));
+        return;
+    };
+
+    log::info!("reading settings from `{}`", file.path().display());
+    let Ok(f) = std::fs::File::open(file.path()).map_err(|e| {
+        log::error!("failed to open file `{}`: {e}", file.path().display());
+        handle.success(OllamaResponse::Toast(Toast::error(e.to_string())));
+    }) else {
+        return;
+    };
+
+    let settings = serde_json::from_reader(std::io::BufReader::new(f));
+    if let Ok(settings) = settings {
+        handle.success(OllamaResponse::Settings(settings));
+    } else if let Err(e) = settings {
+        log::error!("failed to load settings: {e}");
+        handle.success(OllamaResponse::Toast(Toast::error(e.to_string())));
+    }
 }
 
 impl Sessions {
@@ -290,7 +319,7 @@ impl Sessions {
                         } else {
                             Some(&self.models)
                         },
-                        |typ| match typ {
+                        &mut |typ| match typ {
                             RequestInfoType::ModelInfo(name) => {
                                 if !self.pending_model_infos.contains_key(name) {
                                     request_info_for = Some(name.to_string());
@@ -298,6 +327,13 @@ impl Sessions {
                             }
                             RequestInfoType::Models => {
                                 list_models = true;
+                            }
+                            RequestInfoType::LoadSettings => {
+                                let handle = self.flower.handle();
+                                tokio::spawn(async move {
+                                    handle.activate();
+                                    load_settings(&handle).await;
+                                });
                             }
                         },
                         &settings_modal,
@@ -394,7 +430,7 @@ impl Sessions {
                     } else {
                         Some(&self.models)
                     },
-                    |typ| match typ {
+                    &mut |typ| match typ {
                         RequestInfoType::ModelInfo(name) => {
                             if !self.pending_model_infos.contains_key(name) {
                                 request_info_for = Some(name.to_string());
@@ -403,6 +439,7 @@ impl Sessions {
                         RequestInfoType::Models => {
                             list_models = true;
                         }
+                        RequestInfoType::LoadSettings => (), // can't be called from here
                     },
                 );
                 if let Some(name) = request_info_for {
@@ -490,6 +527,7 @@ impl Sessions {
 
     fn poll_ollama_flower(&mut self, modal: &Modal) {
         self.flower.extract(|()| ()).finalize(|resp| {
+            self.flower_activity = OllamaFlowerActivity::Idle;
             match resp {
                 Ok(OllamaResponse::Ignore) => (),
                 Ok(OllamaResponse::Models(models)) => {
@@ -521,6 +559,9 @@ impl Sessions {
                         log::debug!("adding {} image(s)", files.len());
                         chat.images.extend(files);
                     }
+                }
+                Ok(OllamaResponse::Settings(settings)) => {
+                    self.settings = settings;
                 }
                 Err(flowync::error::Compact::Suppose(e)) => {
                     modal

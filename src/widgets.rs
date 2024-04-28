@@ -48,6 +48,7 @@ pub struct ModelPicker {
 pub enum RequestInfoType<'a> {
     Models,
     ModelInfo(&'a str),
+    LoadSettings,
 }
 
 fn collapsing_frame<R>(
@@ -100,8 +101,12 @@ const TEMPLATE_HINT_TEXT: &str = r#"{{ if .System }}<|im_start|>system
 {{ end }}<|im_start|>assistant"#;
 
 impl ModelPicker {
-    pub fn show<R>(&mut self, ui: &mut egui::Ui, models: Option<&[LocalModel]>, mut request_info: R)
-    where
+    pub fn show<R>(
+        &mut self,
+        ui: &mut egui::Ui,
+        models: Option<&[LocalModel]>,
+        request_info: &mut R,
+    ) where
         R: FnMut(RequestInfoType),
     {
         if let Some(models) = models {
@@ -810,7 +815,7 @@ impl Settings {
         &mut self,
         ui: &mut egui::Ui,
         models: Option<&[LocalModel]>,
-        request_info: R,
+        request_info: &mut R,
         modal: &Modal,
     ) where
         R: FnMut(RequestInfoType),
@@ -878,7 +883,9 @@ impl Settings {
                     Self::ask_save_settings(settings).await;
                 });
             }
-            if ui.button("Load").clicked() {}
+            if ui.button("Load").clicked() {
+                request_info(RequestInfoType::LoadSettings);
+            }
         });
     }
 }

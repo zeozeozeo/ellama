@@ -27,7 +27,7 @@ anyhow = "1"
 serde_json = "1"
 egui-notify = "0.14.0"
 ron = "0.8.1"
-fastrand = "2.0.2"
+fastrand = "2.1.0"
 egui-twemoji = "0.3.0"
 image = "0.24"
 egui_extras = { version = "0.27.2", features = ["file", "image"] }

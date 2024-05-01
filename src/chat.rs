@@ -1,6 +1,8 @@
+#[cfg(feature = "tts")]
+use crate::sessions::SharedTts;
+
 use crate::{
     easymark::MemoizedEasymarkHighlighter,
-    sessions::SharedTts,
     widgets::{self, ModelPicker},
 };
 use anyhow::{Context, Result};
@@ -75,6 +77,7 @@ impl Default for Message {
     }
 }
 
+#[cfg(feature = "tts")]
 fn tts_control(tts: SharedTts, text: String, speak: bool) {
     std::thread::spawn(move || {
         if let Some(tts) = tts {
@@ -153,7 +156,7 @@ impl Message {
         &mut self,
         ui: &mut egui::Ui,
         commonmark_cache: &mut CommonMarkCache,
-        tts: SharedTts,
+        #[cfg(feature = "tts")] tts: SharedTts,
         idx: usize,
         prepend_buf: &mut String,
     ) -> MessageAction {
@@ -308,25 +311,28 @@ impl Message {
                 }
                 self.clicked_copy = self.clicked_copy && copy.hovered();
 
-                let speak = ui
-                    .add(
-                        egui::Button::new(if self.is_speaking { "…" } else { "🔊" })
-                            .small()
-                            .fill(egui::Color32::TRANSPARENT),
-                    )
-                    .on_hover_text("Read the message out loud. Right click to repeat");
+                #[cfg(feature = "tts")]
+                {
+                    let speak = ui
+                        .add(
+                            egui::Button::new(if self.is_speaking { "…" } else { "🔊" })
+                                .small()
+                                .fill(egui::Color32::TRANSPARENT),
+                        )
+                        .on_hover_text("Read the message out loud. Right click to repeat");
 
-                if speak.clicked() {
-                    if self.is_speaking {
-                        self.is_speaking = false;
-                        tts_control(tts, String::new(), false);
-                    } else {
+                    if speak.clicked() {
+                        if self.is_speaking {
+                            self.is_speaking = false;
+                            tts_control(tts, String::new(), false);
+                        } else {
+                            self.is_speaking = true;
+                            tts_control(tts, self.content.clone(), true);
+                        }
+                    } else if speak.secondary_clicked() {
                         self.is_speaking = true;
                         tts_control(tts, self.content.clone(), true);
                     }
-                } else if speak.secondary_clicked() {
-                    self.is_speaking = true;
-                    tts_control(tts, self.content.clone(), true);
                 }
 
                 if !self.is_user()
@@ -396,6 +402,7 @@ impl Default for Chat {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn request_completion(
     ollama: Ollama,
     messages: Vec<ChatMessage>,
@@ -881,7 +888,7 @@ impl Chat {
         ui: &mut egui::Ui,
         ollama: &Ollama,
         commonmark_cache: &mut CommonMarkCache,
-        tts: SharedTts,
+        #[cfg(feature = "tts")] tts: SharedTts,
     ) -> Option<usize> {
         let mut new_speaker: Option<usize> = None;
         let mut any_prepending = false;
@@ -903,6 +910,7 @@ impl Chat {
                         let action = message.show(
                             ui,
                             commonmark_cache,
+                            #[cfg(feature = "tts")]
                             tts.clone(),
                             index,
                             &mut self.prepend_buf,
@@ -988,8 +996,8 @@ impl Chat {
         &mut self,
         ctx: &egui::Context,
         ollama: &Ollama,
-        tts: SharedTts,
-        stopped_speaking: bool,
+        #[cfg(feature = "tts")] tts: SharedTts,
+        #[cfg(feature = "tts")] stopped_speaking: bool,
         commonmark_cache: &mut CommonMarkCache,
     ) -> ChatAction {
         let avail = ctx.available_rect();
@@ -1012,7 +1020,9 @@ impl Chat {
                 });
             });
 
+        #[cfg(feature = "tts")]
         let mut new_speaker: Option<usize> = None;
+
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style()).inner_margin(Margin {
                 left: 16.0,
@@ -1024,9 +1034,18 @@ impl Chat {
                 if self.messages.is_empty() {
                     self.show_suggestions(ui, ollama);
                 } else {
-                    if let Some(new) = self.show_chat_scrollarea(ui, ollama, commonmark_cache, tts)
-                    {
-                        new_speaker = Some(new);
+                    #[allow(unused_variables)]
+                    if let Some(new) = self.show_chat_scrollarea(
+                        ui,
+                        ollama,
+                        commonmark_cache,
+                        #[cfg(feature = "tts")]
+                        tts,
+                    ) {
+                        #[cfg(feature = "tts")]
+                        {
+                            new_speaker = Some(new);
+                        }
                     }
 
                     // stop generating button
@@ -1043,19 +1062,22 @@ impl Chat {
                 }
             });
 
-        if let Some(new_idx) = new_speaker {
-            log::debug!("new speaker {new_idx} appeared, updating message icons");
-            for (i, msg) in self.messages.iter_mut().enumerate() {
-                if i == new_idx {
-                    continue;
+        #[cfg(feature = "tts")]
+        {
+            if let Some(new_idx) = new_speaker {
+                log::debug!("new speaker {new_idx} appeared, updating message icons");
+                for (i, msg) in self.messages.iter_mut().enumerate() {
+                    if i == new_idx {
+                        continue;
+                    }
+                    msg.is_speaking = false;
                 }
-                msg.is_speaking = false;
             }
-        }
-        if stopped_speaking {
-            log::debug!("TTS stopped speaking, updating message icons");
-            for msg in self.messages.iter_mut() {
-                msg.is_speaking = false;
+            if stopped_speaking {
+                log::debug!("TTS stopped speaking, updating message icons");
+                for msg in self.messages.iter_mut() {
+                    msg.is_speaking = false;
+                }
             }
         }
 

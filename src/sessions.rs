@@ -13,8 +13,12 @@ use ollama_rs::{
     models::{LocalModel, ModelInfo},
     Ollama,
 };
+#[cfg(feature = "tts")]
 use parking_lot::RwLock;
-use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
+#[cfg(feature = "tts")]
+use std::sync::Arc;
+use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc, time::Instant};
+#[cfg(feature = "tts")]
 use tts::Tts;
 
 #[derive(Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -23,6 +27,7 @@ enum SessionTab {
     Chats,
 }
 
+#[cfg(feature = "tts")]
 pub type SharedTts = Option<Arc<RwLock<Tts>>>;
 
 enum OllamaResponse {
@@ -31,7 +36,7 @@ enum OllamaResponse {
     ModelInfo { name: String, info: ModelInfo },
     Toast(Toast),
     Images { id: usize, files: Vec<PathBuf> },
-    Settings(Settings),
+    Settings(Box<Settings>),
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -80,8 +85,10 @@ pub struct Sessions {
     selected_chat: usize,
     #[serde(skip)]
     chat_marked_for_deletion: usize,
+    #[cfg(feature = "tts")]
     #[serde(skip)]
     is_speaking: bool,
+    #[cfg(feature = "tts")]
     #[serde(skip)]
     tts: SharedTts,
     #[serde(skip)]
@@ -114,7 +121,9 @@ impl Default for Sessions {
             chats: vec![Chat::default()],
             selected_chat: 0,
             chat_marked_for_deletion: 0,
+            #[cfg(feature = "tts")]
             is_speaking: false,
+            #[cfg(feature = "tts")]
             tts: Tts::default()
                 .map_err(|e| log::error!("failed to initialize TTS: {e}"))
                 .map(|tts| Arc::new(RwLock::new(tts)))
@@ -260,15 +269,23 @@ impl Sessions {
 
     pub fn show(&mut self, ctx: &egui::Context, ollama: &Ollama) {
         // check if tts stopped speaking
+        #[cfg(feature = "tts")]
         let prev_is_speaking = self.is_speaking;
-        self.is_speaking = if let Some(tts) = &self.tts {
-            tts.read().is_speaking().unwrap_or(false)
-        } else {
-            false
-        };
+        #[cfg(feature = "tts")]
+        {
+            self.is_speaking = if let Some(tts) = &self.tts {
+                tts.read().is_speaking().unwrap_or(false)
+            } else {
+                false
+            };
+        }
 
         // if speaking, continuously check if stopped
+        #[cfg(feature = "tts")]
         let mut request_repaint = self.is_speaking;
+
+        #[cfg(not(feature = "tts"))]
+        let mut request_repaint = false;
 
         let mut modal = Modal::new(ctx, "sessions_main_modal");
         let mut chat_modal = Modal::new(ctx, "chat_main_modal").with_close_on_outside_click(true);
@@ -367,18 +384,30 @@ impl Sessions {
                 })
             });
         } else {
-            self.show_selected_chat(ctx, ollama, prev_is_speaking && !self.is_speaking)
+            self.show_selected_chat(
+                ctx,
+                ollama,
+                #[cfg(feature = "tts")]
+                (prev_is_speaking && !self.is_speaking),
+            )
         }
 
         // display toast queue
         self.toasts.show(ctx);
     }
 
-    fn show_selected_chat(&mut self, ctx: &egui::Context, ollama: &Ollama, stopped_talking: bool) {
+    fn show_selected_chat(
+        &mut self,
+        ctx: &egui::Context,
+        ollama: &Ollama,
+        #[cfg(feature = "tts")] stopped_talking: bool,
+    ) {
         let action = self.chats[self.selected_chat].show(
             ctx,
             ollama,
+            #[cfg(feature = "tts")]
             self.tts.clone(),
+            #[cfg(feature = "tts")]
             stopped_talking,
             &mut self.commonmark_cache,
         );
@@ -605,7 +634,7 @@ impl Sessions {
                     }
                 }
                 Ok(OllamaResponse::Settings(settings)) => {
-                    self.settings = settings;
+                    self.settings = *settings;
                 }
                 Err(flowync::error::Compact::Suppose(e)) => {
                     modal

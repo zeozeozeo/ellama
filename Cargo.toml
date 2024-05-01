@@ -48,3 +48,7 @@ image = "0.24"
 egui_extras = { version = "0.27.2", features = ["file", "image"] }
 base64-stream = "4.0"
 url = "2"
+
+[features]
+default = []
+tts = []

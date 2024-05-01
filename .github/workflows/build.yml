@@ -44,8 +44,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Install build-essential and libgtk-3-dev on Linux
-        run: sudo apt-get install --yes build-essential libgtk-3-dev
+      - name: Install dependencies on Linux
+        run: sudo apt-get install --yes build-essential libgtk-3-dev speech-dispatcher
         if: contains(matrix.platform.name, 'linux')
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v0

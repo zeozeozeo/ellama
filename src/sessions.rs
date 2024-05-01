@@ -777,6 +777,8 @@ impl Sessions {
             {
                 self.add_default_chat();
                 self.selected_chat = self.chats.len() - 1;
+                self.edited_chat = None;
+                self.settings_open = false;
             }
         });
 

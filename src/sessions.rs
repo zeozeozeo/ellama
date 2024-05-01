@@ -98,8 +98,7 @@ pub struct Sessions {
     pending_model_infos: HashMap<String, ()>,
     #[serde(skip)]
     virtual_list: Rc<RefCell<VirtualList>>,
-    edit_modal_open: bool,
-    edited_chat: usize,
+    edited_chat: Option<usize>,
     chat_export_format: ChatExportFormat,
     #[serde(skip)]
     toasts: Toasts,
@@ -127,8 +126,7 @@ impl Default for Sessions {
             last_request_time: now,
             pending_model_infos: HashMap::new(),
             virtual_list: Rc::new(RefCell::new(VirtualList::default())),
-            edit_modal_open: false,
-            edited_chat: 0,
+            edited_chat: None,
             chat_export_format: ChatExportFormat::default(),
             toasts: Toasts::default(),
             settings_open: false,
@@ -197,7 +195,7 @@ async fn load_settings(handle: &OllamaFlowerHandle) {
         .pick_file()
         .await
     else {
-        handle.success(OllamaResponse::Toast(Toast::error("No file selected")));
+        handle.success(OllamaResponse::Toast(Toast::info("No file selected")));
         return;
     };
 
@@ -277,17 +275,17 @@ impl Sessions {
         let settings_modal =
             Modal::new(ctx, "global_settings_modal").with_close_on_outside_click(true);
 
-        if self.edit_modal_open {
-            let mut open = self.edit_modal_open;
-            egui::Window::new("Edit Chat")
-                .collapsible(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .open(&mut open)
-                .show(ctx, |ui| {
-                    self.show_edit_modal_inner(ui, ollama);
-                });
-            self.edit_modal_open = open;
-        }
+        // if self.edit_modal_open {
+        //     let mut open = self.edit_modal_open;
+        //     egui::Window::new("Edit Chat")
+        //         .collapsible(false)
+        //         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        //         .open(&mut open)
+        //         .show(ctx, |ui| {
+        //             self.show_edit_modal_inner(ui, ollama);
+        //         });
+        //     self.edit_modal_open = open;
+        // }
 
         // show dialogs created on the previous frame, if we move this into the end of the function
         // it won't be located in the center of the window but in the center of the centralpanel instead
@@ -361,6 +359,12 @@ impl Sessions {
                     }
                 });
             });
+        } else if let Some(edited_chat) = self.edited_chat {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+                    self.show_chat_edit_panel(ui, edited_chat, ollama);
+                })
+            });
         } else {
             self.show_selected_chat(ctx, ollama, prev_is_speaking && !self.is_speaking)
         }
@@ -427,13 +431,38 @@ impl Sessions {
         });
     }
 
-    fn show_edit_modal_scrollarea(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
+    fn show_chat_edit_panel(&mut self, ui: &mut egui::Ui, chat_idx: usize, ollama: &Ollama) {
+        ui.horizontal(|ui| {
+            let Some(chat) = self.chats.get(chat_idx) else {
+                return;
+            };
+            if chat.summary.is_empty() {
+                ui.heading("Editing Chat \"New Chat\"");
+            } else {
+                ui.heading(format!("Editing Chat \"{}\"", chat.summary));
+            }
+
+            ui.with_layout(Layout::right_to_left(egui::Align::Min), |ui| {
+                if ui
+                    .add(
+                        egui::Button::new("❌")
+                            .fill(Color32::TRANSPARENT)
+                            .frame(false),
+                    )
+                    .on_hover_text("Close")
+                    .clicked()
+                {
+                    self.edited_chat = None;
+                }
+            });
+        });
+
         egui::CollapsingHeader::new("Model")
             .default_open(true)
             .show(ui, |ui| {
                 let mut request_info_for: Option<String> = None;
                 let is_loading_models = self.is_loading_models();
-                let Some(chat) = self.chats.get_mut(self.edited_chat) else {
+                let Some(chat) = self.chats.get_mut(chat_idx) else {
                     return;
                 };
                 let mut list_models = false;
@@ -470,7 +499,7 @@ impl Sessions {
                 }
             });
         ui.collapsing("Export", |ui| {
-            ui.label("Export chat history to a file.");
+            ui.label("Export chat history to a file");
             let format = self.chat_export_format;
             egui::ComboBox::from_label("Export Format")
                 .selected_text(format.to_string())
@@ -483,11 +512,11 @@ impl Sessions {
                         );
                     }
                 });
-            if ui.button("Save As...").clicked() {
+            if ui.button("Save As…").clicked() {
                 let task = rfd::AsyncFileDialog::new()
                     .add_filter(format!("{format:?} file"), format.extensions())
                     .save_file();
-                let Some(chat) = self.chats.get_mut(self.edited_chat) else {
+                let Some(chat) = self.chats.get_mut(chat_idx) else {
                     return;
                 };
                 let messages = chat.messages.clone();
@@ -508,12 +537,6 @@ impl Sessions {
                     };
                 });
             }
-        });
-    }
-
-    fn show_edit_modal_inner(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            self.show_edit_modal_scrollarea(ui, ollama);
         });
     }
 
@@ -669,7 +692,7 @@ impl Sessions {
                         self.remove_chat(idx);
                     } else {
                         self.chat_marked_for_deletion = idx;
-                        self.edit_modal_open = false;
+                        self.edited_chat = None;
                         modal.open();
                     }
                     ignore_click = true;
@@ -684,8 +707,14 @@ impl Sessions {
                     .on_hover_text("Edit")
                     .clicked()
                 {
-                    (ignore_click, self.edit_modal_open) = (true, true);
-                    self.edited_chat = idx;
+                    ignore_click = true;
+
+                    // toggle editing
+                    self.edited_chat = if self.edited_chat == Some(idx) {
+                        None
+                    } else {
+                        Some(idx)
+                    };
                 }
             });
         });

@@ -26,7 +26,7 @@ egui_commonmark = { git = "https://github.com/zeozeozeo/egui_commonmark.git", br
 env_logger = "0.11"
 flowync = { version = "5.1", features = ["compact"] }
 log = "0.4.21"
-ollama-rs = { git = "https://github.com/zeozeozeo/ollama-rs", branch = "url", features = ["rustls", "stream"] }
+ollama-rs = { git = "https://github.com/pepperoni21/ollama-rs", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 egui-modal = "0.3.6"

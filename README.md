@@ -15,9 +15,11 @@ Ellama is a friendly interface to chat with a local or remote [Ollama](https://o
 # 🦙 Quickstart
 
 1. Download the latest Ellama release from the [Releases](https://github.com/zeozeozeo/ellama/releases) page.
-   * or, if you have `cargo` installed:
+   * or build & install from source:
         ```bash
-        $ cargo install ellama
+        $ git clone https://github.com/zeozeozeo/ellama.git
+        $ cd ellama
+        $ cargo install --path .
         ```
 2. In the Settings ⚙️ tab, change the Ollama host if needed (default is `http://127.0.0.1:11434`)
 3. In the same tab, select a model that will be used for new chats by default. Ellama will try to select the best model on the first run.

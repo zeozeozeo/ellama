@@ -33,12 +33,12 @@ jobs:
             bin: ellama
             name: ellama-Linux-x86_64-musl.tar.gz
 
-          - release_for: FreeBSD-x86_64
-            os: ubuntu-20.04
-            target: x86_64-unknown-freebsd
-            bin: ellama
-            name: ellama-FreeBSD-x86_64.tar.gz
-            command: build
+          # - release_for: FreeBSD-x86_64
+          #   os: ubuntu-20.04
+          #   target: x86_64-unknown-freebsd
+          #   bin: ellama
+          #   name: ellama-FreeBSD-x86_64.tar.gz
+          #   command: build
 
     runs-on: ${{ matrix.platform.os }}
     steps:

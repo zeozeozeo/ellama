@@ -26,7 +26,7 @@ Ellama is a friendly interface to chat with a local or remote [Ollama](https://o
 
 # 🦙 Gallery
 
-![Gaslight LLMs (to jailbreak them)](/media/GASLIGHT.MP4)
+https://github.com/zeozeozeo/ellama/assets/108888572/c7fe07b8-1b46-47cc-bae1-2b7e087d5482
 
 ![Ellama's greeting screen](/media/funfact.png)
 

@@ -319,6 +319,7 @@ impl Sessions {
         }
 
         if self.settings_open {
+            self.edited_chat = None;
             egui::CentralPanel::default().show(ctx, |ui| {
                 egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
                     let mut request_info_for: Option<String> = None;

@@ -545,7 +545,7 @@ impl Sessions {
         ui.add_space(ui.style().spacing.window_margin.top);
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, SessionTab::Chats, "Chats");
-            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(Layout::right_to_left(egui::Align::Max), |ui| {
                 ui.toggle_value(&mut self.settings_open, "⚙")
                     .on_hover_text("Settings");
             });
@@ -792,6 +792,7 @@ impl Sessions {
                     if self.show_chat_in_sidepanel(ui, i, modal) {
                         self.selected_chat = i;
                         self.settings_open = false;
+                        self.edited_chat = None;
                     }
                     ui.add_space(2.0);
                     1

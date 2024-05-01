@@ -590,11 +590,11 @@ checksum = "9475866fec1451be56a3c2400fd081ff546538961565ccb5b7142cbd22bc7a51"
 
 [[package]]
 name = "base64-stream"
-version = "3.0.1"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b17698d5fd7ede49ee2bbc32d6c35288376b1465f6046088370fce74f2240548"
+checksum = "932386b7ea5514531faa617e7404984e485b8add428790223c2eb3c1059749df"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.0",
  "educe",
  "generic-array 1.0.0",
 ]

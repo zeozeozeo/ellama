@@ -1,7 +1,16 @@
 [package]
 name = "ellama"
+description = "Friendly interface to chat with an Ollama instance."
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+exclude = ["media/**"]
+documentation = "https://docs.rs/ellama"
+categories = ["visualization", "gui"]
+keywords = ["llama", "ollama", "llm", "ai", "egui", "gui", "ui"]
+homepage = "https://github.com/zeozeozeo/ellama"
+repository = "https://github.com/zeozeozeo/ellama"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -31,5 +40,5 @@ fastrand = "2.1.0"
 egui-twemoji = "0.3.0"
 image = "0.24"
 egui_extras = { version = "0.27.2", features = ["file", "image"] }
-base64-stream = "3.0.1"
+base64-stream = "4.0"
 url = "2"

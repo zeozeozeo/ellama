@@ -742,9 +742,10 @@ fn help(ui: &mut egui::Ui, text: &str, add_contents: impl FnOnce(&mut egui::Ui))
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct Settings {
     pub endpoint: String,
+    endpoint_error: String,
     pub model_picker: ModelPicker,
     pub inherit_chat_picker: bool,
-    endpoint_error: String,
+    show_console: bool,
 }
 
 const DEFAULT_HOST: &str = "http://127.0.0.1:11434";
@@ -756,6 +757,7 @@ impl Default for Settings {
             model_picker: ModelPicker::default(),
             inherit_chat_picker: true,
             endpoint_error: String::new(),
+            show_console: false,
         }
     }
 }
@@ -817,6 +819,22 @@ impl Settings {
             .map_err(|e| log::error!("failed to save settings: {e}"));
     }
 
+    pub fn apply_startup(&self) {
+        #[cfg(windows)]
+        if !self.show_console {
+            use windows::Win32::System::Console::GetConsoleWindow;
+            use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+
+            // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
+            let hwnd = unsafe { GetConsoleWindow() };
+            if hwnd.0 != 0 {
+                let _ = unsafe { ShowWindow(hwnd, SW_HIDE) }
+                    .ok()
+                    .map_err(|e| log::error!("{e}"));
+            }
+        }
+    }
+
     pub fn show<R>(
         &mut self,
         ui: &mut egui::Ui,
@@ -876,6 +894,15 @@ impl Settings {
         ui.separator();
 
         ui.heading("Miscellaneous");
+
+        #[cfg(windows)]
+        ui.horizontal(|ui| {
+            ui.add(toggle(&mut self.show_console));
+            help(ui, "Don't hide console window on Windows", |ui| {
+                ui.label("Show Console");
+            });
+        });
+
         ui.label("Reset global settings to defaults");
         if ui.button("Reset").clicked() {
             modal.open();

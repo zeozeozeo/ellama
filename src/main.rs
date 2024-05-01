@@ -75,6 +75,7 @@ impl Ellama {
 
         if let Some(storage) = cc.storage {
             if let Some(mut app_state) = eframe::get_value::<Self>(storage, eframe::APP_KEY) {
+                app_state.sessions.settings.apply_startup();
                 log::debug!("app state successfully restored from storage");
                 app_state.sessions.list_models(app_state.ollama.clone());
                 app_state.ollama = app_state.sessions.settings.make_ollama();
@@ -85,7 +86,9 @@ impl Ellama {
         log::debug!("app state is not saved in storage, using default app state");
 
         // default app
-        Self::default()
+        let app = Self::default();
+        app.sessions.settings.apply_startup();
+        app
     }
 }
 

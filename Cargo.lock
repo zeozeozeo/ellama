@@ -1415,7 +1415,7 @@ checksum = "a47c1c47d2f5964e29c61246e81db715514cd532db6b5116a25ea3c03d6780a2"
 
 [[package]]
 name = "ellama"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64-stream",
@@ -1444,6 +1444,7 @@ dependencies = [
  "tokio-stream",
  "tts",
  "url",
+ "windows 0.56.0",
 ]
 
 [[package]]

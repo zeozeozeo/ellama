@@ -11,10 +11,31 @@ mod widgets;
 
 const TITLE: &str = "Ellama";
 
+fn load_icon() -> egui::IconData {
+    let (icon_rgba, icon_width, icon_height) = {
+        let icon = include_bytes!("../assets/icon.png");
+        let image = ::image::load_from_memory(icon)
+            .expect("failed to load icon")
+            .into_rgba8();
+        let (width, height) = image.dimensions();
+        let rgba = image.into_raw();
+        (rgba, width, height)
+    };
+
+    egui::IconData {
+        rgba: icon_rgba,
+        width: icon_width,
+        height: icon_height,
+    }
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    let native_options = eframe::NativeOptions::default();
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_icon(load_icon()),
+        ..Default::default()
+    };
     eframe::run_native(
         TITLE,
         native_options,

@@ -38,6 +38,14 @@ https://github.com/zeozeozeo/ellama/assets/108888572/c7fe07b8-1b46-47cc-bae1-2b7
 
 ![Ellama's chat edit panel](/media/chatedit.png)
 
+# 🦙 Wishlist
+
+These features are not yet present in Ellama, but they would be nice to have:
+
+* Support OpenAI-Compatible APIs: currently only has Ollama support
+* A "Notes" section, where you can edit and write LLM-asissted notes
+* Publish on crates.io: currently still relies on some git dependencies
+
 # License
 
 MIT OR Apache-2.0

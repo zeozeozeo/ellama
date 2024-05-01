@@ -82,7 +82,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: target/${{ matrix.platform.target }}/release/ellama
-          asset_name: zcb3-linux
+          asset_name: ellama-linux
           tag: ${{ github.ref }}
           overwrite: true
         if: contains(matrix.platform.target, 'linux')

@@ -1,0 +1,88 @@
+on:
+  release:
+    types: [created]
+
+env:
+  CRATE_NAME: ellama
+  GITHUB_TOKEN: ${{ github.token }}
+  RUST_BACKTRACE: 1
+
+jobs:
+  release:
+    name: Release - ${{ matrix.platform.release_for }}
+    strategy:
+      matrix:
+        platform:
+          - release_for: Windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: ellama.exe
+            name: ellama-Windows-x86_64.zip
+            command: both
+          
+          - release_for: macOS-x86_64
+            os: macOS-latest
+            target: x86_64-apple-darwin
+            bin: ellama
+            name: ellama-Darwin-x86_64.tar.gz
+            command: both
+          
+          - release_for: Linux-x86_64
+            os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+            bin: ellama
+            name: ellama-Linux-x86_64-musl.tar.gz
+
+          - release_for: FreeBSD-x86_64
+            os: ubuntu-20.04
+            target: x86_64-unknown-freebsd
+            bin: ellama
+            name: ellama-FreeBSD-x86_64.tar.gz
+            command: build
+
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Install build-essential and libgtk-3-dev on Linux
+        run: sudo apt-get install --yes build-essential libgtk-3-dev
+        if: contains(matrix.platform.name, 'linux')
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: ${{ matrix.platform.command }}
+          target: ${{ matrix.platform.target }}
+          args: "--release"
+          strip: true
+      - name: Publish release artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ellama-${{ matrix.platform.target }}
+          path: "target/${{ matrix.platform.target }}/release/ellama*"
+      - name: Upload binaries to release (MacOS)
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/${{ matrix.platform.target }}/release/ellama
+          asset_name: ellama-macos
+          tag: ${{ github.ref }}
+          overwrite: true
+        if: contains(matrix.platform.target, 'darwin')
+      - name: Upload binaries to release (Windows)
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/${{ matrix.platform.target }}/release/ellama.exe
+          asset_name: ellama.exe
+          tag: ${{ github.ref }}
+          overwrite: true
+        if: contains(matrix.platform.target, 'windows')
+      - name: Upload binaries to release (Linux)
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/${{ matrix.platform.target }}/release/ellama
+          asset_name: zcb3-linux
+          tag: ${{ github.ref }}
+          overwrite: true
+        if: contains(matrix.platform.target, 'linux')

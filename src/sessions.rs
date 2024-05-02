@@ -179,8 +179,8 @@ async fn pick_images(id: usize, handle: &OllamaFlowerHandle) {
         .add_filter(
             "Image",
             &[
-                "avif", "bmp", "dds", "ff", "gif", "hdr", "ico", "jpeg", "jpg", "exr", "png",
-                "pnm", "qoi", "tga", "tiff", "webp",
+                "bmp", "dds", "ff", "gif", "hdr", "ico", "jpeg", "jpg", "exr", "png", "pnm", "qoi",
+                "tga", "tiff", "webp",
             ],
         )
         .pick_files()

@@ -176,13 +176,7 @@ async fn request_model_info(ollama: Ollama, model_name: String, handle: &OllamaF
 
 async fn pick_images(id: usize, handle: &OllamaFlowerHandle) {
     let Some(files) = rfd::AsyncFileDialog::new()
-        .add_filter(
-            "Image",
-            &[
-                "bmp", "dds", "ff", "gif", "hdr", "ico", "jpeg", "jpg", "exr", "png", "pnm", "qoi",
-                "tga", "tiff", "webp",
-            ],
-        )
+        .add_filter("Image", crate::IMAGE_FORMATS)
         .pick_files()
         .await
     else {
@@ -222,6 +216,40 @@ async fn load_settings(handle: &OllamaFlowerHandle) {
     } else if let Err(e) = settings {
         log::error!("failed to load settings: {e}");
         handle.success(OllamaResponse::Toast(Toast::error(e.to_string())));
+    }
+}
+
+fn preview_files_being_dropped(ctx: &egui::Context) {
+    use egui::*;
+    use std::fmt::Write as _;
+
+    if !ctx.input(|i| i.raw.hovered_files.is_empty()) {
+        let text = ctx.input(|i| {
+            let mut text = "Dropping files:".to_owned();
+            for file in &i.raw.hovered_files {
+                if let Some(path) = &file.path {
+                    write!(text, "\n{}", path.display()).ok();
+                } else if !file.mime.is_empty() {
+                    write!(text, "\n{}", file.mime).ok();
+                } else {
+                    text += "\n???";
+                }
+            }
+            text
+        });
+
+        let painter =
+            ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("file_drop_target")));
+
+        let screen_rect = ctx.screen_rect();
+        painter.rect_filled(screen_rect, 0.0, Color32::from_black_alpha(192));
+        painter.text(
+            screen_rect.center(),
+            Align2::CENTER_CENTER,
+            text,
+            TextStyle::Heading.resolve(&ctx.style()),
+            Color32::WHITE,
+        );
     }
 }
 
@@ -389,7 +417,8 @@ impl Sessions {
                 ollama,
                 #[cfg(feature = "tts")]
                 (prev_is_speaking && !self.is_speaking),
-            )
+            );
+            preview_files_being_dropped(ctx);
         }
 
         // display toast queue
@@ -402,7 +431,36 @@ impl Sessions {
         ollama: &Ollama,
         #[cfg(feature = "tts")] stopped_talking: bool,
     ) {
-        let action = self.chats[self.selected_chat].show(
+        let Some(chat) = self.chats.get_mut(self.selected_chat) else {
+            self.selected_chat = 0;
+            return;
+        };
+
+        ctx.input(|i| {
+            for file in &i.raw.dropped_files {
+                if let Some(path) = &file.path {
+                    let filename = path.file_name().unwrap_or_default().to_string_lossy();
+                    let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+                        log::warn!("dropped file `{}` has no extension", path.display());
+                        self.toasts
+                            .add(Toast::info(format!("Skipping non-image `{filename}`")));
+                        continue;
+                    };
+                    if !crate::IMAGE_FORMATS.contains(&ext) {
+                        log::warn!(
+                            "dropped file `{}` has unsupported extension `{ext}`",
+                            path.display()
+                        );
+                        self.toasts
+                            .add(Toast::info(format!("Skipping non-image `{filename}`")));
+                        continue;
+                    }
+                    chat.images.push(path.clone());
+                }
+            }
+        });
+
+        let action = chat.show(
             ctx,
             ollama,
             #[cfg(feature = "tts")]

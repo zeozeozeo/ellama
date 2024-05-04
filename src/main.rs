@@ -1,3 +1,6 @@
+#![warn(clippy::all, rust_2018_idioms)]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+
 use eframe::egui;
 use ollama_rs::Ollama;
 use sessions::Sessions;
@@ -10,6 +13,10 @@ mod style;
 mod widgets;
 
 const TITLE: &str = "Ellama";
+const IMAGE_FORMATS: &[&str] = &[
+    "bmp", "dds", "ff", "gif", "hdr", "ico", "jpeg", "jpg", "exr", "png", "pnm", "qoi", "tga",
+    "tiff", "webp",
+];
 
 fn load_icon() -> egui::IconData {
     let (icon_rgba, icon_width, icon_height) = {
@@ -75,7 +82,6 @@ impl Ellama {
 
         if let Some(storage) = cc.storage {
             if let Some(mut app_state) = eframe::get_value::<Self>(storage, eframe::APP_KEY) {
-                app_state.sessions.settings.apply_startup();
                 log::debug!("app state successfully restored from storage");
                 app_state.sessions.list_models(app_state.ollama.clone());
                 app_state.ollama = app_state.sessions.settings.make_ollama();
@@ -87,7 +93,6 @@ impl Ellama {
 
         // default app
         let app = Self::default();
-        app.sessions.settings.apply_startup();
         app
     }
 }

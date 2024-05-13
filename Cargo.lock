@@ -2981,7 +2981,7 @@ dependencies = [
 [[package]]
 name = "ollama-rs"
 version = "0.1.9"
-source = "git+https://github.com/pepperoni21/ollama-rs#0dc8b9143990c1cf7dfe6a9ec6a2ef4f77d34a93"
+source = "git+https://github.com/pepperoni21/ollama-rs#56e8157d98d4185bc171fe9468d3d09bc56e9dd3"
 dependencies = [
  "reqwest",
  "serde",

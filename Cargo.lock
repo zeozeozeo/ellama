@@ -3117,9 +3117,11 @@ dependencies = [
 
 [[package]]
 name = "ollama-rs"
-version = "0.1.9"
-source = "git+https://github.com/pepperoni21/ollama-rs#0dc8b9143990c1cf7dfe6a9ec6a2ef4f77d34a93"
+version = "0.2.0"
+source = "git+https://github.com/pepperoni21/ollama-rs#5f10610285ad6b774e8cbb41b539e352627bd3b5"
 dependencies = [
+ "async-trait",
+ "log",
  "reqwest",
  "serde",
  "serde_json",

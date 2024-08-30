@@ -48,4 +48,4 @@ These features are not yet present in Ellama, but they would be nice to have:
 
 # License
 
-MIT OR Apache-2.0
+Unlicense OR MIT OR Apache-2.0

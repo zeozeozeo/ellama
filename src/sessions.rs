@@ -752,15 +752,11 @@ impl Sessions {
 
         ui.horizontal(|ui| {
             if summary.is_empty() {
-                ui.add(
-                    egui::Label::new("New Chat")
-                        .selectable(false)
-                        .truncate(true),
-                );
+                ui.add(egui::Label::new("New Chat").selectable(false).truncate());
             } else {
                 EmojiLabel::new(summary)
                     .selectable(false)
-                    .truncate(true)
+                    .truncate()
                     .show(ui);
             }
 
@@ -809,9 +805,7 @@ impl Sessions {
 
         ui.add_enabled(
             false,
-            egui::Label::new(last_message)
-                .selectable(false)
-                .truncate(true),
+            egui::Label::new(last_message).selectable(false).truncate(),
         );
         ignore_click
     }

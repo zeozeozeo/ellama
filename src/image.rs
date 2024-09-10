@@ -53,7 +53,7 @@ pub fn show_images(ui: &mut egui::Ui, images: &mut Vec<PathBuf>, mutate: bool) {
                     .on_hover_text(path_string);
 
                     let file_name = image_path.file_name().unwrap_or_default().to_string_lossy();
-                    ui.add(egui::Label::new(RichText::new(file_name).small()).truncate(true));
+                    ui.add(egui::Label::new(RichText::new(file_name).small()).truncate());
                 });
             })
             .response;

@@ -46,7 +46,7 @@ async fn main() {
     eframe::run_native(
         TITLE,
         native_options,
-        Box::new(|cc| Box::new(Ellama::new(cc))),
+        Box::new(|cc| Ok(Box::new(Ellama::new(cc)))),
     )
     .expect("failed to run app");
 }

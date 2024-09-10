@@ -169,7 +169,7 @@ impl ModelPicker {
                 ui.end_row();
 
                 ui.label("Modified");
-                ui.add(egui::Label::new(&self.selected.modified_ago).truncate(true))
+                ui.add(egui::Label::new(&self.selected.modified_ago).truncate())
                     .on_hover_text(&self.selected.modified_at);
                 ui.end_row();
             });
@@ -197,20 +197,20 @@ impl ModelPicker {
                     ui.label(". This overrides what is defined in the Modelfile. The default template is shown in the Template header.");
                 });
                 egui::Grid::new("set_template_variable_grid").num_columns(2).show(ui, |ui| {
-                    ui.add(egui::Label::new(RichText::new("Variable").strong()).wrap(true));
-                    ui.add(egui::Label::new(RichText::new("Description").strong()).wrap(true));
+                    ui.add(egui::Label::new(RichText::new("Variable").strong()).wrap());
+                    ui.add(egui::Label::new(RichText::new("Description").strong()).wrap());
                     ui.end_row();
 
                     ui.code("{{ .System }}");
-                    ui.add(egui::Label::new("The system message used to specify custom behavior.").wrap(true));
+                    ui.add(egui::Label::new("The system message used to specify custom behavior.").wrap());
                     ui.end_row();
 
                     ui.code("{{ .Prompt }}");
-                    ui.add(egui::Label::new("The user prompt message.").wrap(true));
+                    ui.add(egui::Label::new("The user prompt message.").wrap());
                     ui.end_row();
 
                     ui.code("{{ .Response }}");
-                    ui.add(egui::Label::new("The response from the model. When generating a response, text after this variable is omitted.").wrap(true));
+                    ui.add(egui::Label::new("The response from the model. When generating a response, text after this variable is omitted.").wrap());
                     ui.end_row();
                 });
 
@@ -655,11 +655,8 @@ pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) -> egui::Respons
         .fill(ui.style().visuals.faint_bg_color)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.add(egui::Label::new(text).wrap(false).selectable(false));
-                ui.add_enabled(
-                    false,
-                    egui::Label::new(subtext).wrap(false).selectable(false),
-                );
+                ui.add(egui::Label::new(text).selectable(false));
+                ui.add_enabled(false, egui::Label::new(subtext).selectable(false));
             });
             ui.add_space(ui.available_width());
         })
@@ -684,10 +681,7 @@ pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) -> egui::Respons
 }
 
 pub fn dummy(ui: &mut egui::Ui) {
-    ui.add_sized(
-        Vec2::ZERO,
-        egui::Label::new("").wrap(false).selectable(false),
-    );
+    ui.add_sized(Vec2::ZERO, egui::Label::new("").selectable(false));
 }
 
 #[inline]
@@ -708,7 +702,9 @@ fn toggle_ui(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
         *on = !*on;
         response.mark_changed();
     }
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, *on, ""));
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, *on, response.hovered(), "")
+    });
 
     if ui.is_rect_visible(rect) {
         let how_on = ui.ctx().animate_bool(response.id, *on);
@@ -734,7 +730,7 @@ fn toggle(on: &mut bool) -> impl egui::Widget + '_ {
 fn help(ui: &mut egui::Ui, text: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
         add_contents(ui);
-        ui.add_enabled(false, egui::Label::new("(?)").wrap(false).selectable(false))
+        ui.add_enabled(false, egui::Label::new("(?)").selectable(false))
             .on_disabled_hover_text(text);
     });
 }

@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{Context, Result};
 use eframe::egui::{
     self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
-    Pos2, Rect, Rounding, Stroke,
+    Pos2, Rect, Rounding, Stroke, TextStyle,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -184,7 +184,7 @@ impl Message {
         // compensate for that
         let is_commonmark = !self.content.is_empty() && !self.is_error && !self.is_prepending;
         if is_commonmark {
-            ui.add_space(-24.0);
+            ui.add_space(-TextStyle::Body.resolve(ui.style()).size + 4.0);
         }
 
         // message content / spinner
@@ -258,9 +258,11 @@ impl Message {
                     }
                 });
             } else {
-                CommonMarkViewer::new(format!("message_{idx}_commonmark"))
-                    .max_image_width(Some(512))
-                    .show(ui, commonmark_cache, &self.content);
+                CommonMarkViewer::new().max_image_width(Some(512)).show(
+                    ui,
+                    commonmark_cache,
+                    &self.content,
+                );
             }
         });
 
@@ -291,7 +293,7 @@ impl Message {
             && (!self.is_user() || shift_held)
             && !self.is_error
         {
-            ui.add_space(-12.0);
+            ui.add_space(2.0);
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
                 let copy = ui
@@ -350,8 +352,8 @@ impl Message {
                     self.is_prepending = true;
                 }
             });
-            ui.add_space(8.0);
         }
+        ui.add_space(12.0);
 
         action
     }

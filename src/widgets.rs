@@ -456,7 +456,7 @@ impl ModelSettings {
                         .on_hover_text("Set random value")
                         .clicked()
                     {
-                        *val = Some(N::from_f64(f64_range(N::MIN.to_f64()..=N::MAX.to_f64())));
+                        *val = Some(N::from_f64(f64_range(0.0..=1.0)));
                     }
                     if ui
                         .button("reset")

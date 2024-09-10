@@ -3,6 +3,7 @@ use eframe::egui::{self, FontTweak};
 pub fn set_style(ctx: &egui::Context) {
     ctx.style_mut(|s| {
         s.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand);
+        s.url_in_tooltip = true;
     });
 
     let mut fonts = egui::FontDefinitions::empty();

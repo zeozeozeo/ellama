@@ -269,7 +269,7 @@ impl Message {
         // images
         if !self.images.is_empty() {
             if is_commonmark {
-                ui.add_space(-8.0);
+                ui.add_space(4.0);
             }
             ui.horizontal(|ui| {
                 ui.add_space(message_offset);
@@ -947,6 +947,7 @@ impl Chat {
     fn show_suggestions(&mut self, ui: &mut egui::Ui, ollama: &Ollama) {
         egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             widgets::centerer(ui, |ui| {
+                let avail_width = ui.available_rect_before_wrap().width() - 24.0;
                 ui.horizontal(|ui| {
                     ui.heading("Ellama");
                     if !self.model_picker.selected_model().is_empty() {
@@ -957,6 +958,7 @@ impl Chat {
                 });
                 egui::Grid::new("suggestions_grid")
                     .num_columns(3)
+                    .max_col_width((avail_width / 2.0).min(200.0))
                     .spacing(vec2(6.0, 6.0))
                     .show(ui, |ui| {
                         if widgets::suggestion(ui, "Tell me a fun fact", "about the Roman empire")

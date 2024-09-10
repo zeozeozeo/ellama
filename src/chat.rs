@@ -486,9 +486,9 @@ pub enum ChatExportFormat {
     Ron,
 }
 
-impl ToString for ChatExportFormat {
-    fn to_string(&self) -> String {
-        format!("{self:?}")
+impl std::fmt::Display for ChatExportFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }
 

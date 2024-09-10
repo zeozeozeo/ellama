@@ -92,8 +92,8 @@ impl Ellama {
         log::debug!("app state is not saved in storage, using default app state");
 
         // default app
-        let app = Self::default();
-        app
+        
+        Self::default()
     }
 }
 

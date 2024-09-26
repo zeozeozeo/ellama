@@ -45,7 +45,7 @@ ron = "0.8.1"
 fastrand = "2.1.1"
 egui-twemoji = "0.4.0"
 image = "0.25.2"
-egui_extras = { version = "0.28.1", features = ["file", "image"] }
+egui_extras = { version = "0.29.0", features = ["file", "image"] }
 base64-stream = "4.0"
 url = "2"
 

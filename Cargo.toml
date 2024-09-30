@@ -29,7 +29,7 @@ log = "0.4.22"
 ollama-rs = { version = "0.2.1", features = ["rustls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
-egui-modal = "0.4.0"
+egui-modal = "0.5.0"
 tts = { version = "0.26.3", optional = true }
 parking_lot = { version = "0.12", optional = true }
 bytesize = "1.3"

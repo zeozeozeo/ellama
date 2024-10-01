@@ -21,7 +21,7 @@ codegen-units = 1
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = { version = "0.28.1", default-features = false, features = ["persistence", "x11", "wayland", "accesskit", "glow"] }
+eframe = { version = "0.29.1", default-features = false, features = ["persistence", "x11", "wayland", "accesskit", "glow"] }
 egui_commonmark = { git = "https://github.com/zeozeozeo/egui_commonmark.git", branch = "twemoji", features = ["twemoji", "better_syntax_highlighting", "svg"] }
 env_logger = "0.11"
 flowync = { version = "5.1", features = ["compact"] }

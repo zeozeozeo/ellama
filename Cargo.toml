@@ -40,7 +40,7 @@ serde = { version = "1", features = ["derive"] }
 rfd = { version = "0.14.1", default-features = false, features = ["tokio", "xdg-portal"] }
 anyhow = "1"
 serde_json = "1"
-egui-notify = "0.15.0"
+egui-notify = "0.17.0"
 ron = "0.8.1"
 fastrand = "2.1.1"
 egui-twemoji = "0.4.0"

@@ -37,7 +37,7 @@ timeago = { version = "0.4", default-features = false, features = ["chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
 egui_virtual_list = "0.4.0"
 serde = { version = "1", features = ["derive"] }
-rfd = { version = "0.14.1", default-features = false, features = ["tokio", "xdg-portal"] }
+rfd = { version = "0.15.1", default-features = false, features = ["tokio", "xdg-portal"] }
 anyhow = "1"
 serde_json = "1"
 egui-notify = "0.15.0"

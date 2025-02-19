@@ -134,7 +134,11 @@ impl Default for Sessions {
             flower_activity: OllamaFlowerActivity::default(),
             last_request_time: now,
             pending_model_infos: HashMap::new(),
-            virtual_list: Rc::new(RefCell::new(VirtualList::default())),
+            virtual_list: Rc::new(RefCell::new({
+                let mut list = VirtualList::new();
+                list.check_for_resize(false);
+                list
+            })),
             edited_chat: None,
             chat_export_format: ChatExportFormat::default(),
             toasts: Toasts::default(),

@@ -396,7 +396,11 @@ impl Default for Chat {
             summary: String::new(),
             chatbox_highlighter: MemoizedEasymarkHighlighter::default(),
             stop_generating: Arc::new(AtomicBool::new(false)),
-            virtual_list: VirtualList::new(),
+            virtual_list:{
+                let mut list = VirtualList::new();
+                list.check_for_resize(false);
+                list
+            },
             model_picker: ModelPicker::default(),
             images: Vec::new(),
             prepend_buf: String::new(),

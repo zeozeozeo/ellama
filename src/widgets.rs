@@ -1027,9 +1027,12 @@ pub(crate) fn html_think_render(
                     done_thinking = !is_generating;
                     right
                 })
-                .trim();
+                .trim_matches(|c: char| c.is_whitespace() || c == '\u{200B}');
             if middle.is_empty() {
-                break;
+                ui.vertical(|ui| {
+                    ui.add_space(-egui::TextStyle::Body.resolve(ui.style()).size);
+                });
+                return true;
             }
 
             let is_first_frame = ui.memory_mut(|m| {

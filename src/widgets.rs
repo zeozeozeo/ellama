@@ -1047,10 +1047,16 @@ pub(crate) fn html_think_render(
                         thinking_icon(ui, o, resp, done_thinking);
                     })
                     .show(ui, |ui| {
-                        ui.add_space(-egui::TextStyle::Body.resolve(ui.style()).size);
+                        if done_thinking {
+                            ui.add_space(-egui::TextStyle::Body.resolve(ui.style()).size);
+                        } else {
+                            ui.add_space(2.0);
+                        }
                         EmojiLabel::new(middle).wrap().show(ui);
                     });
-                ui.add_space(2.0);
+                if done_thinking {
+                    ui.add_space(2.0);
+                }
             });
             return done_thinking;
         }

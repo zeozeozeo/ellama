@@ -120,8 +120,9 @@ jobs:
           - nightly
     steps:
       - uses: actions/checkout@v4
-      - name: apt-get install dependencies
-        run: sudo apt-get install --yes build-essential libgtk-3-dev libspeechd-dev libssl-dev
+      - name: apt-get install dependencies on Linux
+        run: sudo apt-get install --yes build-essential libgtk-3-dev libspeechd-dev
+        if: contains(matrix.platform.name, 'linux')
       - name: Run tests
         uses: houseabsolute/actions-rust-cross@v1
         with:

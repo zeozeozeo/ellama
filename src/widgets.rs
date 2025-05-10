@@ -1042,6 +1042,7 @@ pub(crate) fn html_think_render(
                 egui::CollapsingHeader::new(" Thoughts")
                     .id_salt(id)
                     .open(if is_first_frame { Some(true) } else { None })
+                    .default_open(true)
                     .show_background(true)
                     .icon(move |ui: &mut egui::Ui, o: f32, resp: &egui::Response| {
                         thinking_icon(ui, o, resp, done_thinking);
@@ -1052,7 +1053,8 @@ pub(crate) fn html_think_render(
                         } else {
                             ui.add_space(2.0);
                         }
-                        EmojiLabel::new(middle).wrap().show(ui);
+                        //EmojiLabel::new(middle).wrap().show(ui);
+                        ui.label(middle);
                     });
                 if done_thinking {
                     ui.add_space(2.0);

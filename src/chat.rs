@@ -265,7 +265,7 @@ impl Message {
                         widgets::html_think_render(
                             ui,
                             html,
-                            format!("thoughts-{}", idx),
+                            format!("thoughts-{idx}"),
                             is_generating,
                         );
                     }))

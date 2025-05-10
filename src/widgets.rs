@@ -935,7 +935,7 @@ static THINKING_TAGS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         .map(|(start, end)| {
             let start = regex::escape(start);
             let end = regex::escape(end);
-            format!(r"{}[\s\S]*?{}", start, end)
+            format!(r"{start}[\s\S]*?{end}")
         })
         .collect::<Vec<_>>()
         .join("|");
@@ -971,7 +971,7 @@ pub(crate) fn remove_blank_lines_in_thinking_tags(s: &str) -> String {
                 .join("\n");
 
             // rebuild with newlines preserved
-            format!("{}\n{}\n{}", start_tag, replaced_inner, end_tag)
+            format!("{start_tag}\n{replaced_inner}\n{end_tag}")
         })
         .into_owned()
 }
@@ -979,7 +979,7 @@ pub(crate) fn remove_blank_lines_in_thinking_tags(s: &str) -> String {
 fn thinking_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Response, done_thinking: bool) {
     let color = ui
         .style()
-        .interact(&response)
+        .interact(response)
         .fg_stroke
         .color
         .gamma_multiply(openness.max(0.4));

@@ -931,10 +931,10 @@ pub(crate) fn sanitize_text_for_tts(s: &str) -> String {
 /// needed as a hack to get comrak to not stop abruptly inside the tag; returns true if a matching end tag was found and not inserted automatically.
 pub(crate) fn remove_blank_lines_in_thinking_tags(s: &str) -> (String, bool) {
     let mut inner = s;
-    let mut tags = ("", "");
+    let mut start = "";
     for (start_tag, end_tag) in THINKING_TAGS {
         if s.starts_with(start_tag) {
-            tags = (start_tag, end_tag);
+            start = start_tag;
             if let Some(end_tag_pos) = s.find(end_tag) {
                 // we're going to use the inner contents later
                 inner = &s[start_tag.len()..end_tag_pos + end_tag.len()];
@@ -949,7 +949,7 @@ pub(crate) fn remove_blank_lines_in_thinking_tags(s: &str) -> (String, bool) {
     }
 
     let mut res = String::with_capacity(s.len());
-    res.push_str(tags.0);
+    res.push_str(start);
     res.push('\n');
     for line in inner.lines() {
         res.push_str(if line.trim().is_empty() {
@@ -960,7 +960,7 @@ pub(crate) fn remove_blank_lines_in_thinking_tags(s: &str) -> (String, bool) {
         res.push('\n');
     }
 
-    res.push_str(&s[tags.0.len() + inner.len()..]);
+    res.push_str(&s[start.len() + inner.len()..]);
     (res, true)
 }
 

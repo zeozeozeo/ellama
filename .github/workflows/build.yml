@@ -1,3 +1,5 @@
+name: Cross build and publish release
+
 on:
   release:
     types: [created]
@@ -8,81 +10,140 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  release:
-    name: Release - ${{ matrix.platform.release_for }}
+  test:
+    name: ${{ matrix.platform.os-name }} with rust ${{ matrix.toolchain }}
+    runs-on: ${{ matrix.platform.runs-on }}
     strategy:
+      fail-fast: false
       matrix:
         platform:
-          - release_for: Windows-x86_64
-            os: windows-latest
+          # - sparc64-unknown-linux-gnu
+          # - x86_64-unknown-illumos
+
+          - os-name: FreeBSD-x86_64
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-freebsd
+            bin: ellama
+            name: ellama-FreeBSD-x86_64.tar.gz
+            skip-tests: true
+          - os-name: Linux-x86_64
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            bin: ellama
+            name: ellama-Linux-x86_64-musl.tar.gz
+            skip-tests: true
+          - os-name: Linux-aarch64
+            runs-on: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            bin: ellama
+            name: ellama-Linux-aarch64-musl.tar.gz
+            skip-tests: true
+          - os-name: Linux-arm
+            runs-on: ubuntu-latest
+            target: arm-unknown-linux-musleabi
+            bin: ellama
+            name: ellama-Linux-arm-musl.tar.gz
+            skip-tests: true
+          - os-name: Linux-i686
+            runs-on: ubuntu-latest
+            target: i686-unknown-linux-musl
+            bin: ellama
+            name: ellama-Linux-i686-musl.tar.gz
+            skip-tests: true
+          - os-name: Linux-powerpc
+            runs-on: ubuntu-latest
+            target: powerpc-unknown-linux-gnu
+            bin: ellama
+            name: ellama-Linux-powerpc-gnu.tar.gz
+            skip-tests: true
+          - os-name: Linux-powerpc64
+            runs-on: ubuntu-latest
+            target: powerpc64-unknown-linux-gnu
+            bin: ellama
+            name: ellama-Linux-powerpc64-gnu.tar.gz
+            skip-tests: true
+          - os-name: Linux-powerpc64le
+            runs-on: ubuntu-latest
+            target: powerpc64le-unknown-linux-gnu
+            bin: ellama
+            name: ellama-Linux-powerpc64le.tar.gz
+            skip-tests: true
+          - os-name: Linux-riscv64
+            runs-on: ubuntu-latest
+            target: riscv64gc-unknown-linux-gnu
+            bin: ellama
+            name: ellama-Linux-riscv64gc-gnu.tar.gz
+            skip-tests: true
+          - os-name: Linux-s390x
+            runs-on: ubuntu-latest
+            target: s390x-unknown-linux-gnu
+            bin: ellama
+            name: ellama-Linux-s390x-gnu.tar.gz
+            skip-tests: true
+          - os-name: NetBSD-x86_64
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-netbsd
+            bin: ellama
+            name: ellama-NetBSD-x86_64.tar.gz
+            skip-tests: true
+          - os-name: Windows-aarch64
+            runs-on: windows-latest
+            target: aarch64-pc-windows-msvc
+            bin: ellama.exe
+            name: ellama-Windows-aarch64.zip
+            skip-tests: true
+          - os-name: Windows-i686
+            runs-on: windows-latest
+            target: i686-pc-windows-msvc
+            bin: ellama.exe
+            name: ellama-Windows-i686.zip
+            skip-tests: true
+          - os-name: Windows-x86_64
+            runs-on: windows-latest
             target: x86_64-pc-windows-msvc
             bin: ellama.exe
             name: ellama-Windows-x86_64.zip
-            command: both
-          
-          - release_for: macOS-x86_64
-            os: macOS-latest
+            skip-tests: true
+          - os-name: macOS-x86_64
+            runs-on: macOS-latest
             target: x86_64-apple-darwin
             bin: ellama
             name: ellama-Darwin-x86_64.tar.gz
-            command: both
-          
-          - release_for: Linux-x86_64
-            os: ubuntu-20.04
-            target: x86_64-unknown-linux-gnu
+            skip-tests: true
+          - os-name: macOS-aarch64
+            runs-on: macOS-latest
+            target: aarch64-apple-darwin
             bin: ellama
-            name: ellama-Linux-x86_64-musl.tar.gz
-
-          # - release_for: FreeBSD-x86_64
-          #   os: ubuntu-20.04
-          #   target: x86_64-unknown-freebsd
-          #   bin: ellama
-          #   name: ellama-FreeBSD-x86_64.tar.gz
-          #   command: build
-
-    runs-on: ${{ matrix.platform.os }}
+            name: ellama-Darwin-aarch64.tar.gz
+            skip-tests: true
+        toolchain:
+          - nightly
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Install dependencies on Linux
-        run: sudo apt-get install --yes build-essential libgtk-3-dev libspeechd-dev
-        if: contains(matrix.platform.name, 'linux')
-      - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v0
+      - uses: actions/checkout@v4
+      - name: Run tests
+        uses: houseabsolute/actions-rust-cross@v1
         with:
-          command: ${{ matrix.platform.command }}
+          command: "test"
           target: ${{ matrix.platform.target }}
-          args: "--release"
+          toolchain: ${{ matrix.toolchain }}
+          args: "--locked --release"
+          # This works around the issue in https://github.com/cross-rs/cross/issues/1450. The `main`
+          # branch updated its images long ago, but the last cross release, 0.2.5, is still using
+          # Ubuntu 16.04 as the base for some images.
+          cross-version: 107433fa9d71d7eb506cd5bf5467bab89edb7a52
+        if: ${{ !matrix.platform.skip-tests }}
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          command: "build"
+          target: ${{ matrix.platform.target }}
+          toolchain: ${{ matrix.toolchain }}
+          args: "--locked --release"
           strip: true
-      - name: Publish release artifacts
-        uses: actions/upload-artifact@v3
+          cross-version: 107433fa9d71d7eb506cd5bf5467bab89edb7a52
+      - name: Publish artifacts and release
+        uses: houseabsolute/actions-rust-release@v0
         with:
-          name: ellama-${{ matrix.platform.target }}
-          path: "target/${{ matrix.platform.target }}/release/ellama*"
-      - name: Upload binaries to release (MacOS)
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/${{ matrix.platform.target }}/release/ellama
-          asset_name: ellama-macos
-          tag: ${{ github.ref }}
-          overwrite: true
-        if: contains(matrix.platform.target, 'darwin')
-      - name: Upload binaries to release (Windows)
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/${{ matrix.platform.target }}/release/ellama.exe
-          asset_name: ellama.exe
-          tag: ${{ github.ref }}
-          overwrite: true
-        if: contains(matrix.platform.target, 'windows')
-      - name: Upload binaries to release (Linux)
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/${{ matrix.platform.target }}/release/ellama
-          asset_name: ellama-linux
-          tag: ${{ github.ref }}
-          overwrite: true
-        if: contains(matrix.platform.target, 'linux')
+          executable-name: ellama
+          target: ${{ matrix.platform.target }}
+        if: matrix.toolchain == 'stable'

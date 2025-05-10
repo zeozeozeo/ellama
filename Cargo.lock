@@ -1464,7 +1464,6 @@ dependencies = [
  "log",
  "ollama-rs",
  "parking_lot",
- "regex",
  "rfd",
  "ron 0.10.1",
  "serde",

@@ -192,6 +192,7 @@ impl Message {
         ui.horizontal(|ui| {
             ui.add_space(message_offset);
             if self.content.is_empty() && self.is_generating && !self.is_error {
+                //self.done_thinking = true;
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
 
@@ -258,7 +259,10 @@ impl Message {
                     }
                 });
             } else {
+                let (content, done_thinking) =
+                    widgets::remove_blank_lines_in_thinking_tags(&self.content);
                 let is_generating = self.is_generating;
+
                 CommonMarkViewer::new()
                     .max_image_width(Some(512))
                     .render_html_fn(Some(&move |ui: &mut egui::Ui, html: &str| {
@@ -266,14 +270,10 @@ impl Message {
                             ui,
                             html,
                             format!("thoughts-{idx}"),
-                            is_generating,
+                            done_thinking || !is_generating,
                         );
                     }))
-                    .show(
-                        ui,
-                        commonmark_cache,
-                        &widgets::remove_blank_lines_in_thinking_tags(&self.content),
-                    );
+                    .show(ui, commonmark_cache, &content);
             }
         });
 

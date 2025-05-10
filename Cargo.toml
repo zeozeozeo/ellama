@@ -11,6 +11,13 @@ categories = ["visualization", "gui"]
 keywords = ["llama", "ollama", "llm", "ai", "egui", "gui", "ui"]
 homepage = "https://github.com/zeozeozeo/ellama"
 repository = "https://github.com/zeozeozeo/ellama"
+authors = ["zeozeozeo <i@zeo.lol>"]
+
+[package.metadata.wix]
+upgrade-guid = "0A1DD80C-A3CE-4FF9-87D6-E42AE70FA2D3"
+path-guid = "978B4217-AC4F-48DC-BF7B-AA02673D1E39"
+license = false
+eula = false
 
 [dependencies]
 eframe = { version = "0.31.1", default-features = false, features = [
@@ -57,3 +64,8 @@ url = "2"
 [features]
 default = ["tts"]
 tts = ["parking_lot", "dep:tts"]
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

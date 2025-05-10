@@ -7,8 +7,8 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use eframe::egui::{
-    self, pos2, vec2, Align, Color32, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
-    Pos2, Rect, Rounding, Stroke, TextStyle,
+    self, pos2, vec2, Align, Color32, CornerRadius, Frame, Key, KeyboardShortcut, Layout, Margin,
+    Modifiers, Pos2, Rect, Stroke, TextStyle,
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_modal::{Icon, Modal};
@@ -18,8 +18,8 @@ use ollama_rs::{
     generation::{
         chat::{request::ChatMessageRequest, ChatMessage, ChatMessageResponseStream},
         images::Image,
-        options::GenerationOptions,
     },
+    models::ModelOptions,
     Ollama,
 };
 use std::{
@@ -396,7 +396,7 @@ impl Default for Chat {
             summary: String::new(),
             chatbox_highlighter: MemoizedEasymarkHighlighter::default(),
             stop_generating: Arc::new(AtomicBool::new(false)),
-            virtual_list:{
+            virtual_list: {
                 let mut list = VirtualList::new();
                 list.check_for_resize(false);
                 list
@@ -415,7 +415,7 @@ async fn request_completion(
     handle: &CompletionFlowerHandle,
     stop_generating: Arc<AtomicBool>,
     selected_model: String,
-    options: GenerationOptions,
+    options: ModelOptions,
     template: Option<String>,
     index: usize,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -450,27 +450,25 @@ async fn request_completion(
     let mut is_whitespace = true;
 
     while let Some(Ok(res)) = stream.next().await {
-        if let Some(msg) = res.message {
-            if is_whitespace && msg.content.trim().is_empty() {
-                continue;
-            }
-            let content = if is_whitespace {
-                msg.content.trim_start()
-            } else {
-                &msg.content
-            };
-            is_whitespace = false;
+        if is_whitespace && res.message.content.trim().is_empty() {
+            continue;
+        }
+        let content = if is_whitespace {
+            res.message.content.trim_start()
+        } else {
+            &res.message.content
+        };
+        is_whitespace = false;
 
-            // send message to gui thread
-            handle.send((index, content.to_string()));
-            response += content;
+        // send message to gui thread
+        handle.send((index, content.to_string()));
+        response += content;
 
-            if stop_generating.load(Ordering::SeqCst) {
-                log::info!("stopping generation");
-                drop(stream);
-                stop_generating.store(false, Ordering::SeqCst);
-                break;
-            }
+        if stop_generating.load(Ordering::SeqCst) {
+            log::info!("stopping generation");
+            drop(stream);
+            stop_generating.store(false, Ordering::SeqCst);
+            break;
         }
     }
 
@@ -543,7 +541,7 @@ pub async fn export_messages(
             serde_json::to_writer_pretty(&mut f, &messages)?;
         }
         ChatExportFormat::Ron => {
-            ron::ser::to_writer_pretty(&mut f, &messages, ron::ser::PrettyConfig::default())?;
+            ron::Options::default().to_io_writer_pretty(&mut f, &messages, Default::default())?;
         }
     }
 
@@ -756,7 +754,7 @@ impl Chat {
                 .add(
                     egui::Button::new("➕")
                         .min_size(vec2(32.0, 32.0))
-                        .rounding(Rounding::same(f32::INFINITY)),
+                        .corner_radius(CornerRadius::same(u8::MAX)),
                 )
                 .on_hover_text_at_pointer("Pick Images")
                 .clicked()
@@ -885,6 +883,7 @@ impl Chat {
                 rect.shrink(radius / 2.0 + 1.2),
                 2.0,
                 Stroke::new(2.0, Color32::DARK_GRAY),
+                egui::StrokeKind::Outside,
             );
         }
     }
@@ -1033,10 +1032,10 @@ impl Chat {
 
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style()).inner_margin(Margin {
-                left: 16.0,
-                right: 16.0,
-                top: 0.0,
-                bottom: 3.0,
+                left: 16,
+                right: 16,
+                top: 0,
+                bottom: 3,
             }))
             .show(ctx, |ui| {
                 if self.messages.is_empty() {

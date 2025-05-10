@@ -12,33 +12,33 @@ pub fn set_style(ctx: &egui::Context) {
     log::info!("installing custom fonts");
     fonts.font_data.insert(
         "Inter-Regular".to_owned(),
-        egui::FontData::from_static(include_bytes!("../assets/Inter-Regular.ttf")),
+        egui::FontData::from_static(include_bytes!("../assets/Inter-Regular.ttf")).into(),
     );
     fonts.font_data.insert(
         "JetBrainsMono-Regular".to_owned(),
-        egui::FontData::from_static(include_bytes!("../assets/JetBrainsMono-Regular.ttf")),
+        egui::FontData::from_static(include_bytes!("../assets/JetBrainsMono-Regular.ttf")).into(),
     );
     fonts.font_data.insert(
         "NotoEmoji-Regular".to_owned(),
-        egui::FontData::from_static(include_bytes!("../assets/NotoEmoji-Regular.ttf")).tweak(
-            FontTweak {
+        egui::FontData::from_static(include_bytes!("../assets/NotoEmoji-Regular.ttf"))
+            .tweak(FontTweak {
                 scale: 0.81, // make it smaller
                 ..Default::default()
-            },
-        ),
+            })
+            .into(),
     );
     fonts.font_data.insert(
         "emoji-icon-font".to_owned(),
-        egui::FontData::from_static(include_bytes!("../assets/emoji-icon-font.ttf")).tweak(
-            FontTweak {
+        egui::FontData::from_static(include_bytes!("../assets/emoji-icon-font.ttf"))
+            .tweak(FontTweak {
                 scale: 0.88, // make it smaller
 
                 // probably not correct, but this does make texts look better
                 y_offset_factor: 0.11, // move glyphs down to better align with common fonts
                 baseline_offset_factor: -0.11, // ...now the entire row is a bit down so shift it back
                 ..Default::default()
-            },
-        ),
+            })
+            .into(),
     );
 
     fonts.families.insert(

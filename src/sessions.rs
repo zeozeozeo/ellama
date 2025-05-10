@@ -2,7 +2,7 @@ use crate::{
     chat::{Chat, ChatAction, ChatExportFormat},
     widgets::{ModelPicker, RequestInfoType, Settings},
 };
-use eframe::egui::{self, vec2, Color32, Frame, Layout, Rounding, Stroke};
+use eframe::egui::{self, vec2, Color32, CornerRadius, Frame, Layout, Stroke};
 use egui_commonmark::CommonMarkCache;
 use egui_modal::{Icon, Modal};
 use egui_notify::{Toast, Toasts};
@@ -633,7 +633,7 @@ impl Sessions {
     }
 
     fn show_left_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(ui.style().spacing.window_margin.top);
+        ui.add_space(ui.style().spacing.window_margin.top as _);
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, SessionTab::Chats, "Chats");
             ui.with_layout(Layout::right_to_left(egui::Align::Max), |ui| {
@@ -818,7 +818,7 @@ impl Sessions {
     fn show_chat_in_sidepanel(&mut self, ui: &mut egui::Ui, idx: usize, modal: &Modal) -> bool {
         let mut ignore_click = false;
         let resp = Frame::group(ui.style())
-            .rounding(Rounding::same(6.0))
+            .corner_radius(CornerRadius::same(6))
             .stroke(Stroke::new(2.0, ui.style().visuals.window_stroke.color))
             .fill(if self.selected_chat == idx {
                 ui.style().visuals.faint_bg_color

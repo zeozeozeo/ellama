@@ -1,15 +1,14 @@
 use anyhow::Result;
 use eframe::{
     egui::{
-        self, collapsing_header::CollapsingState, Color32, Frame, Layout, RichText, Rounding,
+        self, collapsing_header::CollapsingState, Color32, CornerRadius, Frame, Layout, RichText,
         Stroke, Vec2,
     },
     emath::Numeric,
 };
 use egui_modal::{Icon, Modal};
 use ollama_rs::{
-    generation::options::GenerationOptions,
-    models::{LocalModel, ModelInfo},
+    models::{LocalModel, ModelInfo, ModelOptions},
     Ollama,
 };
 use url::Url;
@@ -59,10 +58,10 @@ fn collapsing_frame<R>(
     let style = ui.style();
 
     egui::Frame {
-        inner_margin: egui::Margin::same(4.0),
-        rounding: style.visuals.menu_rounding,
+        inner_margin: egui::Margin::same(4),
+        corner_radius: style.visuals.menu_corner_radius,
         fill: style.visuals.extreme_bg_color,
-        ..egui::Frame::none()
+        ..egui::Frame::NONE
     }
     .show(ui, |ui| {
         ui.with_layout(Layout::top_down_justified(egui::Align::Min), |ui| {
@@ -111,7 +110,7 @@ impl ModelPicker {
     {
         if let Some(models) = models {
             ui.horizontal(|ui| {
-                egui::ComboBox::from_id_source("model_selector_combobox")
+                egui::ComboBox::from_id_salt("model_selector_combobox")
                     .selected_text(self.selected_model())
                     .show_ui(ui, |ui| {
                         for model in models {
@@ -278,7 +277,7 @@ impl ModelPicker {
     }
 
     #[inline]
-    pub fn get_generation_options(&self) -> GenerationOptions {
+    pub fn get_generation_options(&self) -> ModelOptions {
         self.settings.clone().into()
     }
 
@@ -320,7 +319,7 @@ struct ModelSettings {
     /// Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text. (Default: 5.0)
     pub mirostat_tau: Option<f32>,
     /// Sets the size of the context window used to generate the next token. (Default: 2048)
-    pub num_ctx: Option<u32>,
+    pub num_ctx: Option<u64>,
     /// The number of GQA groups in the transformer layer. Required for some models, for example it is 8 for llama2:70b
     pub num_gqa: Option<u32>,
     /// The number of layers to send to the GPU(s). On macOS it defaults to 1 to enable metal support, 0 to disable.
@@ -347,7 +346,7 @@ struct ModelSettings {
     pub top_p: Option<f32>,
 }
 
-impl From<ModelSettings> for GenerationOptions {
+impl From<ModelSettings> for ModelOptions {
     fn from(value: ModelSettings) -> Self {
         let mut s = Self::default();
         if let Some(mirostat) = value.mirostat {
@@ -650,7 +649,7 @@ pub fn centerer(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
 
 pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) -> egui::Response {
     let mut resp = Frame::group(ui.style())
-        .rounding(Rounding::same(6.0))
+        .corner_radius(CornerRadius::same(6))
         .stroke(Stroke::NONE)
         .fill(ui.style().visuals.faint_bg_color)
         .show(ui, |ui| {
@@ -668,14 +667,17 @@ pub fn suggestion(ui: &mut egui::Ui, text: &str, subtext: &str) -> egui::Respons
 
     // for some reason egui sets `Frame::group` to not sense clicks, so we
     // have to hack it here
-    resp.clicked = resp.hovered()
+    if resp.hovered()
         && ui.input(|i| {
             i.pointer.any_click()
                 && i.pointer
                     .interact_pos()
                     .map(|p| resp.rect.contains(p))
                     .unwrap_or(false)
-        });
+        })
+    {
+        resp.flags.insert(egui::response::Flags::CLICKED);
+    }
 
     resp
 }
@@ -711,8 +713,13 @@ fn toggle_ui(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
         let visuals = ui.style().interact_selectable(&response, *on);
         let rect = rect.expand(visuals.expansion);
         let radius = 0.5 * rect.height();
-        ui.painter()
-            .rect(rect, radius, visuals.bg_fill, visuals.bg_stroke);
+        ui.painter().rect(
+            rect,
+            radius,
+            visuals.bg_fill,
+            visuals.bg_stroke,
+            egui::StrokeKind::Outside,
+        );
         let circle_x = cubic_ease_out((rect.left() + radius)..=(rect.right() - radius), how_on);
         let center = egui::pos2(circle_x, rect.center().y);
         ui.painter()

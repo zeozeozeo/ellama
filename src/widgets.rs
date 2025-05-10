@@ -911,6 +911,23 @@ const THINKING_TAGS: &[(&str, &str)] = &[
     ("<reflection>", "</reflection>"),
 ];
 
+#[cfg(feature = "tts")]
+pub(crate) fn sanitize_text_for_tts(s: &str) -> String {
+    let mut result = String::new();
+    let mut start = 0;
+    for (start_tag, end_tag) in THINKING_TAGS {
+        while let Some(pos) = s[start..].find(start_tag) {
+            result.push_str(&s[start..start + pos]);
+            start += pos + start_tag.len();
+            if let Some(end) = s[start..].find(end_tag) {
+                start += end + end_tag.len();
+            }
+        }
+    }
+    result.push_str(&s[start..]);
+    result
+}
+
 fn thinking_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Response, done_thinking: bool) {
     let color = ui
         .style()
@@ -946,7 +963,7 @@ fn thinking_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Response, do
 }
 
 /// Renders <think>, <reasoning>, etc. tags in a collapsible frame
-pub(crate) fn html_think_render(ui: &mut egui::Ui, html: &str, id: impl Hash) {
+pub(crate) fn html_think_render(ui: &mut egui::Ui, html: &str, id: impl Hash, is_generating: bool) {
     let html = html.trim();
     for (start_tag, end_tag) in THINKING_TAGS {
         if let Some(right) = html.strip_prefix(start_tag) {
@@ -954,7 +971,7 @@ pub(crate) fn html_think_render(ui: &mut egui::Ui, html: &str, id: impl Hash) {
             let middle = right
                 .strip_suffix(end_tag)
                 .unwrap_or_else(|| {
-                    done_thinking = false;
+                    done_thinking = !is_generating;
                     right
                 })
                 .trim();

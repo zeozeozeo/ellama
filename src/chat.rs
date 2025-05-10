@@ -84,7 +84,7 @@ fn tts_control(tts: SharedTts, text: String, speak: bool) {
             if speak {
                 let _ = tts
                     .write()
-                    .speak(text, true)
+                    .speak(widgets::sanitize_text_for_tts(&text), true)
                     .map_err(|e| log::error!("failed to speak: {e}"));
             } else {
                 let _ = tts
@@ -258,10 +258,16 @@ impl Message {
                     }
                 });
             } else {
+                let is_generating = self.is_generating;
                 CommonMarkViewer::new()
                     .max_image_width(Some(512))
                     .render_html_fn(Some(&move |ui: &mut egui::Ui, html: &str| {
-                        widgets::html_think_render(ui, html, format!("thoughts-{}", idx));
+                        widgets::html_think_render(
+                            ui,
+                            html,
+                            format!("thoughts-{}", idx),
+                            is_generating,
+                        );
                     }))
                     .show(ui, commonmark_cache, &self.content);
             }

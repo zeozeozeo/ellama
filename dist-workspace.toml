@@ -31,6 +31,22 @@ install-updater = true
 [dist.github-custom-runners]
 global = "ubuntu-latest"
 aarch64-apple-darwin = "macos-14"
+aarch64-unknown-linux-gnu = "ubuntu-latest"
+arm-unknown-linux-gnueabihf = "ubuntu-latest"
+arm-unknown-linux-musleabihf = "ubuntu-latest"
 x86_64-apple-darwin = "macos-13"
+#aarch64-pc-windows-msvc = "windows-latest"
 x86_64-pc-windows-msvc = "windows-latest"
-armv7-unknown-linux-musleabihf = "ubuntu-22.04"
+armv7-unknown-linux-gnueabihf = "ubuntu-latest"
+armv7-unknown-linux-musleabihf = "ubuntu-latest"
+x86_64-unknown-linux-musl = "ubuntu-latest"
+x86_64-unknown-linux-gnu = "ubuntu-latest"
+
+[dist.dependencies.apt]
+libgtk-3-dev = '*'
+libxcb-render0-dev = '*'
+libxcb-shape0-dev = '*'
+libxcb-xfixes0-dev = '*'
+libspeechd-dev = '*'
+libxkbcommon-dev = '*'
+libssl-dev = '*'

@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 use anyhow::Result;
 use eframe::{
     egui::{
@@ -7,6 +9,7 @@ use eframe::{
     emath::Numeric,
 };
 use egui_modal::{Icon, Modal};
+use egui_twemoji::EmojiLabel;
 use ollama_rs::{
     models::{LocalModel, ModelInfo, ModelOptions},
     Ollama,
@@ -898,4 +901,88 @@ impl Settings {
             }
         });
     }
+}
+
+const THINKING_TAGS: &[(&str, &str)] = &[
+    ("<think>", "</think>"),
+    ("<thought>", "</thought>"),
+    ("<thinking>", "</thinking>"),
+    ("<reasoning>", "</reasoning>"),
+    ("<reflection>", "</reflection>"),
+];
+
+fn thinking_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Response, done_thinking: bool) {
+    let color = ui
+        .style()
+        .interact(&response)
+        .fg_stroke
+        .color
+        .gamma_multiply(openness.max(0.4));
+    let rect = response.rect;
+    let center = rect.center();
+
+    let grid_size = 4.0;
+    let spacing = rect.height() / (grid_size + 1.0) + openness / 4.0;
+
+    for x in 0..4 {
+        for y in 0..4 {
+            let offset_x = (x as f32 - 1.0) * spacing;
+            let offset_y = (y as f32 - 1.5) * spacing;
+            let pos = center + egui::vec2(offset_x, offset_y) * 2.2;
+
+            let distance_to_center = (x as f32 - 1.5).hypot(y as f32 - 1.5);
+            let radius = egui::lerp(1.0..=2.0, 1.0 - distance_to_center);
+
+            if radius > 0.1 {
+                if !done_thinking {
+                    let anim = (ui.input(|i| i.time) + (x as f64 + y as f64) / 16.0) % 0.9;
+                    ui.painter().circle_filled(pos, radius + anim as f32, color);
+                } else {
+                    ui.painter().circle_filled(pos, radius, color);
+                }
+            }
+        }
+    }
+}
+
+/// Renders <think>, <reasoning>, etc. tags in a collapsible frame
+pub(crate) fn html_think_render(ui: &mut egui::Ui, html: &str, id: impl Hash) {
+    let html = html.trim();
+    for (start_tag, end_tag) in THINKING_TAGS {
+        if let Some(right) = html.strip_prefix(start_tag) {
+            let mut done_thinking = true;
+            let middle = right
+                .strip_suffix(end_tag)
+                .unwrap_or_else(|| {
+                    done_thinking = false;
+                    right
+                })
+                .trim();
+            if middle.is_empty() {
+                break;
+            }
+
+            let is_first_frame = ui.memory_mut(|m| {
+                !*m.data
+                    .get_temp_mut_or_insert_with(egui::Id::new(&id), || true)
+            });
+
+            ui.vertical(|ui| {
+                ui.spacing_mut().button_padding = egui::vec2(6.0, 6.0);
+                egui::CollapsingHeader::new(" Thoughts")
+                    .id_salt(id)
+                    .open(if is_first_frame { Some(true) } else { None })
+                    .show_background(true)
+                    .icon(move |ui: &mut egui::Ui, o: f32, resp: &egui::Response| {
+                        thinking_icon(ui, o, resp, done_thinking);
+                    })
+                    .show(ui, |ui| {
+                        EmojiLabel::new(middle).wrap().show(ui);
+                    });
+                ui.add_space(2.0);
+            });
+            return;
+        }
+    }
+    EmojiLabel::new(html).wrap().show(ui);
 }

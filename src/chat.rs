@@ -258,11 +258,12 @@ impl Message {
                     }
                 });
             } else {
-                CommonMarkViewer::new().max_image_width(Some(512)).show(
-                    ui,
-                    commonmark_cache,
-                    &self.content,
-                );
+                CommonMarkViewer::new()
+                    .max_image_width(Some(512))
+                    .render_html_fn(Some(&move |ui: &mut egui::Ui, html: &str| {
+                        widgets::html_think_render(ui, html, format!("thoughts-{}", idx));
+                    }))
+                    .show(ui, commonmark_cache, &self.content);
             }
         });
 

@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{hash::Hash, sync::LazyLock};
 
 use anyhow::Result;
 use eframe::{
@@ -14,6 +14,7 @@ use ollama_rs::{
     models::{LocalModel, ModelInfo, ModelOptions},
     Ollama,
 };
+use regex::Regex;
 use url::Url;
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
@@ -928,6 +929,53 @@ pub(crate) fn sanitize_text_for_tts(s: &str) -> String {
     result
 }
 
+static THINKING_TAGS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    let pattern = THINKING_TAGS
+        .iter()
+        .map(|(start, end)| {
+            let start = regex::escape(start);
+            let end = regex::escape(end);
+            format!(r"{}[\s\S]*?{}", start, end)
+        })
+        .collect::<Vec<_>>()
+        .join("|");
+    Regex::new(&pattern).unwrap()
+});
+
+// needed as a hack to get comrak to not stop abruptly inside the tag
+pub(crate) fn remove_blank_lines_in_thinking_tags(s: &str) -> String {
+    THINKING_TAGS_REGEX
+        .replace_all(s, |caps: &regex::Captures<'_>| {
+            let matched = caps.get(0).unwrap().as_str();
+
+            // find which tag pair was matched
+            let (start_tag, end_tag) = THINKING_TAGS
+                .iter()
+                .find(|(start, end)| matched.starts_with(start) && matched.ends_with(end))
+                .unwrap();
+
+            let inner_start = start_tag.len();
+            let inner_end = matched.len() - end_tag.len();
+            let inner = &matched[inner_start..inner_end];
+
+            let replaced_inner = inner
+                .lines()
+                .map(|line| {
+                    if line.trim().is_empty() {
+                        "\u{200B}"
+                    } else {
+                        line
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            // rebuild with newlines preserved
+            format!("{}\n{}\n{}", start_tag, replaced_inner, end_tag)
+        })
+        .into_owned()
+}
+
 fn thinking_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Response, done_thinking: bool) {
     let color = ui
         .style()
@@ -963,7 +1011,12 @@ fn thinking_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Response, do
 }
 
 /// Renders <think>, <reasoning>, etc. tags in a collapsible frame
-pub(crate) fn html_think_render(ui: &mut egui::Ui, html: &str, id: impl Hash, is_generating: bool) {
+pub(crate) fn html_think_render(
+    ui: &mut egui::Ui,
+    html: &str,
+    id: impl Hash,
+    is_generating: bool,
+) -> bool {
     let html = html.trim();
     for (start_tag, end_tag) in THINKING_TAGS {
         if let Some(right) = html.strip_prefix(start_tag) {
@@ -994,12 +1047,14 @@ pub(crate) fn html_think_render(ui: &mut egui::Ui, html: &str, id: impl Hash, is
                         thinking_icon(ui, o, resp, done_thinking);
                     })
                     .show(ui, |ui| {
+                        ui.add_space(-egui::TextStyle::Body.resolve(ui.style()).size);
                         EmojiLabel::new(middle).wrap().show(ui);
                     });
                 ui.add_space(2.0);
             });
-            return;
+            return done_thinking;
         }
     }
     EmojiLabel::new(html).wrap().show(ui);
+    true
 }

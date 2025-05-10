@@ -269,7 +269,11 @@ impl Message {
                             is_generating,
                         );
                     }))
-                    .show(ui, commonmark_cache, &self.content);
+                    .show(
+                        ui,
+                        commonmark_cache,
+                        &widgets::remove_blank_lines_in_thinking_tags(&self.content),
+                    );
             }
         });
 

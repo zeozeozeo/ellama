@@ -17,7 +17,22 @@ on:
   # completely broke oranda/mdbook. Sadly we don't provide previews (yet)!
   pull_request:
 
-  workflow_dispatch:
+  # Whenever something gets pushed to main, update the docs!
+  # This is great for getting docs changes live without cutting a full release.
+  #
+  # Note that if you're using cargo-dist, this will "race" the Release workflow
+  # that actually builds the Github Release that oranda tries to read (and
+  # this will almost certainly complete first). As a result you will publish
+  # docs for the latest commit but the oranda landing page won't know about
+  # the latest release. The workflow_run trigger below will properly wait for
+  # cargo-dist, and so this half-published state will only last for ~10 minutes.
+  #
+  # If you only want docs to update with releases, disable this, or change it to
+  # a "release" branch. You can, of course, also manually trigger a workflow run
+  # when you want the docs to update.
+  push:
+    branches:
+      - main
 
   # Whenever a workflow called "Release" completes, update the docs!
   #

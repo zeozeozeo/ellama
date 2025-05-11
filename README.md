@@ -1,8 +1,12 @@
+<div class="oranda-hide">
+
 # 🦙 Ellama [![Ellama Stars](https://img.shields.io/github/stars/zeozeozeo/ellama.svg)](https://github.com/zeozeozeo/ellama)
+
+</div>
 
 Ellama is a friendly interface to chat with a local or remote [Ollama](https://ollama.com/) instance.
 
-![Ellama, a friendly Ollama interface, running LLaVA](/media/pokey.png)
+![Ellama, a friendly Ollama interface, running LLaVA](./media/pokey.png)
 
 # Features
 
@@ -33,15 +37,15 @@ Ellama is a friendly interface to chat with a local or remote [Ollama](https://o
 
 # Gallery
 
-![Demo of a reasoning model (Qwen3)](/media/reasoning.mp4)
+![Demo of a reasoning model (Qwen3)](./media/reasoning.mp4)
 
-![Ellama's greeting screen](/media/funfact.png)
+![Ellama's greeting screen](./media/funfact.png)
 
-![LLaVA counting people, in Ellama](/media/countppl.png)
+![LLaVA counting people, in Ellama](./media/countppl.png)
 
-![Ellama's settings panel](/media/setthings.png)
+![Ellama's settings panel](./media/setthings.png)
 
-![Ellama's chat edit panel](/media/chatedit.png)
+![Ellama's chat edit panel](./media/chatedit.png)
 
 # Wishlist
 

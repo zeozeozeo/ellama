@@ -6,7 +6,9 @@
     "build": {
         "static_dir": "media"
     },
-    "artifacts": {
-        "cargo_dist": true
+    "components": {
+        "artifacts": {
+            "cargo_dist": true
+        }
     }
 }

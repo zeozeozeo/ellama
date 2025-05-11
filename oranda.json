@@ -2,5 +2,8 @@
     "styles": {
         "theme": "dark",
         "favicon": "./assets/icon.png"
+    },
+    "build": {
+        "static_dir": "media"
     }
 }

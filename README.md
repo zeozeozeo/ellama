@@ -33,7 +33,7 @@ Ellama is a friendly interface to chat with a local or remote [Ollama](https://o
 
 # Gallery
 
-https://github.com/zeozeozeo/ellama/assets/108888572/c7fe07b8-1b46-47cc-bae1-2b7e087d5482
+https://github.com/user-attachments/assets/39c0498a-f4cd-4e01-95f1-6a1034413340
 
 ![Ellama's greeting screen](/media/funfact.png)
 

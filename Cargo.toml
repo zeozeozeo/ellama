@@ -63,10 +63,10 @@ url = "2"
 openssl = { version = "0.10.72", features = ["vendored"] }
 
 [features]
-default = ["tts"]
+default = []
 tts = ["parking_lot", "dep:tts"]
 
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
-lto = "thin"
+lto = "fat"

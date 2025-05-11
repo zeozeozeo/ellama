@@ -37,7 +37,7 @@ Ellama is a friendly interface to chat with a local or remote [Ollama](https://o
 
 # Gallery
 
-![Demo of a reasoning model (Qwen3)](./media/reasoning.mp4)
+[![Demo of a reasoning model (Qwen3)](./media/reasoning.gif)](https://github.com/user-attachments/assets/39c0498a-f4cd-4e01-95f1-6a1034413340)
 
 ![Ellama's greeting screen](./media/funfact.png)
 

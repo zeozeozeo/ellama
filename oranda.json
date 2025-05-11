@@ -5,5 +5,8 @@
     },
     "build": {
         "static_dir": "media"
+    },
+    "artifacts": {
+        "cargo_dist": true
     }
 }

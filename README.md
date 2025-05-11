@@ -30,10 +30,14 @@ Ellama is a friendly interface to chat with a local or remote [Ollama](https://o
 4. Close the Settings tab, create a new chat by pressing the "➕ New Chat" button, and start chatting!
 5. To add images, click the ➕ button next to the text field, drag them onto Ellama's window, or paste them from your clipboard.
 
+<div class="oranda-hide">
+
 > [!NOTE]
 > By default, Ellama will build with the `tts` feature OFF. If you need TTS, build with `cargo build --features tts`.
 >
 > Note that on Linux, this requires `libspeechd` (`libspeechd-dev`) to be installed. TTS is currently not enabled in release builds because of this (cross-compilation complications), see https://github.com/zeozeozeo/ellama/issues/71
+
+</div>
 
 # Gallery
 

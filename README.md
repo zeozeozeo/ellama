@@ -29,7 +29,7 @@ Ellama is a friendly interface to chat with a local or remote [Ollama](https://o
 > [!NOTE]
 > By default, Ellama will build with the `tts` feature OFF. If you need TTS, build with `cargo build --features tts`.
 >
-> Note that on Linux, this requires `libspeechd` (`libspeechd-dev`) to be installed. TTS is currently not enabled in release builds because of this (cross-compilation complications), see #71
+> Note that on Linux, this requires `libspeechd` (`libspeechd-dev`) to be installed. TTS is currently not enabled in release builds because of this (cross-compilation complications), see https://github.com/zeozeozeo/ellama/issues/71
 
 # Gallery
 

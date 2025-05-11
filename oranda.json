@@ -1,7 +1,7 @@
 {
     "styles": {
         "theme": "dark",
-        "favicon": "./media/icon-full.svg"
+        "favicon": "./media/favicon.ico"
     },
     "build": {
         "static_dir": "media"

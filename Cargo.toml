@@ -55,7 +55,7 @@ serde_json = "1"
 egui-notify = "0.19.0"
 ron = "0.10.1"
 fastrand = "2.3.0"
-egui-twemoji = "0.7.0"
+egui-twemoji = "0.7.1"
 image = "0.25.6"
 egui_extras = { version = "0.31.1", features = ["file", "image"] }
 base64-stream = "4.0"

@@ -42,7 +42,7 @@ egui-modal = { git = "https://github.com/zeozeozeo/egui-modal.git", branch = "eg
 tts = { version = "0.26.3", optional = true }
 parking_lot = { version = "0.12", optional = true }
 bytesize = "2.0.1"
-timeago = { version = "0.4", default-features = false, features = ["chrono"] }
+timeago = { version = "0.5", default-features = false, features = ["chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
 egui_virtual_list = "0.7.0"
 serde = { version = "1", features = ["derive"] }

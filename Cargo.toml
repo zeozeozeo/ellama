@@ -20,7 +20,7 @@ license = false
 eula = false
 
 [dependencies]
-eframe = { version = "0.31.1", default-features = false, features = [
+eframe = { version = "0.32.3", default-features = false, features = [
     "persistence",
     "x11",
     "wayland",
